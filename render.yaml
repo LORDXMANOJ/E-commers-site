@@ -1,0 +1,29 @@
+# Render Blueprint for the Aurelle API (https://render.com/docs/blueprint-spec)
+# The database lives on Neon (or Supabase); paste its connection string into DATABASE_URL.
+services:
+  - type: web
+    name: aurelle-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    # Apply pending migrations on every deploy, then start the server.
+    startCommand: npx prisma migrate deploy && node dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false # Neon connection string, with ?sslmode=require
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CLIENT_URL
+        sync: false # e.g. https://aurelle.vercel.app (comma-separate several origins)
+      - key: ADMIN_EMAILS
+        sync: false # emails promoted to ADMIN when they register or sign in
+      - key: RESEND_API_KEY
+        sync: false # optional: sends real password-reset emails
