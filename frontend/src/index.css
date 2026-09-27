@@ -4,7 +4,7 @@
  * Aurelle design tokens
  * ─────────────────────
  * Colour: cool porcelain + midnight navy ink, one ultramarine accent, rouge for sale/error.
- * Type:   Bodoni Moda (display, optical sizes) + Schibsted Grotesk (text, tabular numerals).
+ * Type:   Bodoni Moda (display, optical sizes) + Geist (text; tabular figures with proportional commas).
  * Scale:  modular 1.25 (major third) from a 16px base; display sizes are fluid.
  * Radius: 2px on imagery (editorial, crisp), 10px on controls, full on pills.
  */
@@ -61,7 +61,7 @@
 
 @theme inline {
   --font-display: "Bodoni Moda Variable", "Bodoni 72", "Didot", Georgia, serif;
-  --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
 
   --color-bg: var(--bg);
   --color-surface: var(--surface);

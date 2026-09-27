@@ -12,9 +12,9 @@ import { SalesChart } from "./SalesChart";
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className={`${panel} p-4 sm:p-5`}>
+    <div className={`${panel} min-w-0 p-4 sm:p-5`}>
       <p className="text-sm text-muted">{label}</p>
-      <p className="num mt-1.5 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{value}</p>
+      <p className="num mt-1.5 text-xl font-semibold tracking-tight break-words sm:text-2xl xl:text-[1.75rem]">{value}</p>
       {note && <p className="mt-1 text-xs text-muted">{note}</p>}
     </div>
   );
@@ -42,16 +42,16 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Revenue" value={formatINR(data.revenuePaise)} />
             <Stat label="Orders" value={data.orderCount.toLocaleString("en-IN")} note={data.pendingCount ? `${data.pendingCount} waiting for confirmation` : "None waiting"} />
-            <Stat label="Average order" value={formatINR(data.averageOrderPaise)} />
+            <Stat label="Average order" value={formatINR(Math.round(data.averageOrderPaise / 100) * 100)} />
             <Stat label="Customers" value={data.customerCount.toLocaleString("en-IN")} />
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-            <section className={`${panel} p-4 sm:p-5`}>
+            <section className={`${panel} min-w-0 p-4 sm:p-5`}>
               <SalesChart data={data.sales} />
             </section>
 
-            <section className={`${panel} p-4 sm:p-5`} aria-labelledby="low-stock-title">
+            <section className={`${panel} min-w-0 p-4 sm:p-5`} aria-labelledby="low-stock-title">
               <h2 id="low-stock-title" className="mb-3 flex items-center gap-2 font-medium">
                 <AlertTriangle className="size-4 text-warn" aria-hidden /> Low stock
                 <span className="num text-sm font-normal text-muted">(≤ {data.lowStockThreshold})</span>
@@ -86,7 +86,25 @@ export default function DashboardPage() {
             {data.recentOrders.length === 0 ? (
               <p className="px-5 pb-6 text-sm text-muted">No orders yet. They'll appear here as soon as customers check out.</p>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Phones: compact list */}
+              <ul className="divide-y divide-line border-t border-line sm:hidden">
+                {data.recentOrders.map((o) => (
+                  <li key={o.id}>
+                    <Link to={`/admin/orders/${o.id}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <span className="min-w-0">
+                        <span className="num block truncate font-medium">{o.orderNumber}</span>
+                        <span className="block truncate text-xs text-muted">{o.user.name}</span>
+                      </span>
+                      <span className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="num text-sm font-medium">{formatINR(o.totalPaise)}</span>
+                        <StatusBadge status={o.status} />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <div className="relative hidden overflow-x-auto sm:block">
                 <table className="w-full min-w-[36rem] text-sm">
                   <thead className="border-y border-line bg-bg/50">
                     <tr>
@@ -116,6 +134,7 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </section>
         </div>

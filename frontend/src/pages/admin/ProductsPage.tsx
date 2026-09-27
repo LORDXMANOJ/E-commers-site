@@ -101,7 +101,7 @@ export default function ProductsPage() {
         </div>
       ) : (
         <div className={cn(panel, "overflow-hidden transition-opacity", isFetching && "opacity-70")}>
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[46rem] text-sm">
               <thead className="border-b border-line bg-bg/50">
                 <tr>

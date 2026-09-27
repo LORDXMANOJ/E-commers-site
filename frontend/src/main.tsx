@@ -4,7 +4,7 @@ import { RouterProvider } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import "@fontsource-variable/bodoni-moda/opsz.css";
-import "@fontsource-variable/schibsted-grotesk/wght.css";
+import "@fontsource-variable/geist/wght.css";
 import "./index.css";
 import { router } from "./routes";
 import { ApiError } from "./lib/api";

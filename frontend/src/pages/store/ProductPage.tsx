@@ -137,7 +137,7 @@ function PurchasePanel({ product }: { product: Product }) {
       </div>
 
       {!soldOut && (
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        <div className="mt-6 flex gap-3">
           <QuantityStepper value={Math.min(qty, Math.max(maxAddable, 1))} max={Math.max(maxAddable, 1)} onChange={setQty} disabled={maxAddable === 0} />
           <Button size="lg" className="flex-1" onClick={add} loading={adding} disabled={maxAddable === 0}>
             {maxAddable === 0 ? "All available stock is in your bag" : "Add to bag"}

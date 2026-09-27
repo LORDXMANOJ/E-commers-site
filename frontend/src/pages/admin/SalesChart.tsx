@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatINR, formatINRCompact } from "../../lib/format";
 
 type Point = { date: string; revenuePaise: number; orders: number };
@@ -21,14 +21,25 @@ function niceMax(v: number) {
  */
 export function SalesChart({ data }: { data: Point[] }) {
   const [active, setActive] = useState<number | null>(null);
-  const W = 640;
-  const H = 200;
+  // Render at the container's real pixel width so text stays 11px on every screen (no SVG scaling).
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(640);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(260, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const H = W < 480 ? 200 : 320;
   const pad = { top: 12, right: 8, bottom: 26, left: 52 };
   const innerW = W - pad.left - pad.right;
   const innerH = H - pad.top - pad.bottom;
   const max = niceMax(Math.max(...data.map((d) => d.revenuePaise)));
   const slot = innerW / data.length;
-  const barW = Math.min(28, slot - 6);
+  const barW = Math.max(4, Math.min(28, slot - 6));
+  // Label every nth day, counted back from today so the latest day is always labelled.
+  const labelEvery = Math.ceil(56 / slot);
   const y = (v: number) => pad.top + innerH - (v / max) * innerH;
   const ticks = [0, max / 2, max];
   const total = data.reduce((s, d) => s + d.revenuePaise, 0);
@@ -41,8 +52,8 @@ export function SalesChart({ data }: { data: Point[] }) {
         <span className="num text-sm text-muted">{formatINR(total)} total</span>
       </figcaption>
 
-      <div className="relative">
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full overflow-visible" role="img" aria-label={`Daily revenue for the last 14 days, ${formatINR(total)} in total. Table follows.`} onMouseLeave={() => setActive(null)}>
+      <div ref={box} className="relative w-full min-w-0">
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block overflow-visible" role="img" aria-label={`Daily revenue for the last 14 days, ${formatINR(total)} in total. Table follows.`} onMouseLeave={() => setActive(null)}>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={pad.left} x2={W - pad.right} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={1} strokeDasharray={t === 0 ? undefined : "2 4"} />
@@ -80,7 +91,7 @@ export function SalesChart({ data }: { data: Point[] }) {
                     className="pointer-events-none transition-opacity duration-150"
                   />
                 )}
-                {(i % 2 === 0 || i === data.length - 1) && (
+                {(data.length - 1 - i) % labelEvery === 0 && (
                   <text x={pad.left + i * slot + slot / 2} y={H - 6} textAnchor="middle" className="num fill-muted text-[11px]">
                     {dayFmt.format(new Date(d.date))}
                   </text>
@@ -94,7 +105,7 @@ export function SalesChart({ data }: { data: Point[] }) {
           <div
             role="status"
             className="pointer-events-none absolute top-0 z-10 w-max -translate-x-1/2 rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-[var(--shadow-pop)]"
-            style={{ left: `${((pad.left + active * slot + slot / 2) / W) * 100}%` }}
+            style={{ left: `${Math.min(82, Math.max(18, ((pad.left + active * slot + slot / 2) / W) * 100))}%` }}
           >
             <p className="text-xs text-muted">{weekdayFmt.format(new Date(a.date))}</p>
             <p className="num font-semibold">{formatINR(a.revenuePaise)}</p>

@@ -7,6 +7,11 @@ import { Skeleton } from "../ui/Feedback";
 
 const LOW_STOCK = 5;
 
+/** If an image fails (offline, CDN hiccup), fall back to the neutral surface instead of a broken icon. */
+const hideOnError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  e.currentTarget.style.visibility = "hidden";
+};
+
 export function StockNote({ stock, className }: { stock: number; className?: string }) {
   if (stock <= 0) return <p className={cn("text-xs font-medium text-muted", className)}>Sold out</p>;
   if (stock <= LOW_STOCK) return <p className={cn("text-xs font-medium text-sale", className)}>Only {stock} left</p>;
@@ -29,6 +34,7 @@ export function ProductCard({ product, priority, sizes = "(min-width: 1024px) 25
               loading={priority ? "eager" : "lazy"}
               fetchPriority={priority ? "high" : undefined}
               decoding="async"
+              onError={hideOnError}
               className={cn("absolute inset-0 size-full object-cover transition-transform duration-700 ease-[var(--ease-out)] motion-safe:group-hover:scale-[1.025]", soldOut && "opacity-60 grayscale-[35%]")}
             />
           )}
@@ -40,6 +46,7 @@ export function ProductCard({ product, priority, sizes = "(min-width: 1024px) 25
               alt=""
               loading="lazy"
               decoding="async"
+              onError={hideOnError}
               className="hover-swap-b absolute inset-0 size-full object-cover opacity-0 transition-opacity duration-500"
             />
           )}
