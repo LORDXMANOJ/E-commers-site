@@ -12,7 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force",
+    "db:reset": "prisma migrate reset --force --skip-seed && npm run db:seed",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -46,8 +46,5 @@
   "private": true,
   "engines": {
     "node": ">=20"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   }
 }

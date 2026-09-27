@@ -18,7 +18,7 @@ function Hero() {
       </h1>
 
       <div className="mt-5 grid gap-4 sm:mt-7 md:grid-cols-12 md:gap-6">
-        <figure className="relative md:col-span-7">
+        <figure className="relative self-start md:col-span-7">
           <img
             src={sized(HERO_MAIN, 1200)}
             srcSet={srcSet(HERO_MAIN, [640, 900, 1200, 1600])}

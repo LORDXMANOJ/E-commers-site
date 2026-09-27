@@ -138,6 +138,33 @@ try {
   assert.equal(res.status(), 403);
   step("customer is blocked from /admin (UI) and gets 403 from /api/admin/stats");
 
+  // 7. Forgot / reset password through the UI (development shows the link since there is no email provider).
+  const guest = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const g = await guest.newPage();
+  watch(g, "reset");
+  await g.goto(`${BASE}/forgot-password`);
+  await g.getByLabel("Email").fill(email);
+  await g.getByRole("button", { name: "Send reset link" }).click();
+  await g.getByRole("heading", { name: "Check your email" }).waitFor();
+  const devLink = g.getByTestId("dev-reset-link");
+  if (await devLink.count()) {
+    await devLink.click();
+    await g.getByLabel("New password", { exact: true }).fill("Changed456");
+    await g.getByLabel("Confirm new password").fill("Changed456");
+    await g.getByRole("button", { name: "Update password" }).click();
+    await g.waitForURL(/\/login$/);
+    await g.getByLabel("Email").fill(email);
+    await g.getByLabel("Password").fill("Changed456");
+    await g.getByRole("button", { name: "Sign in" }).click();
+    await g.waitForURL((u) => !u.pathname.startsWith("/login"));
+    // The old session was signed out by the reset.
+    const stale = await page.request.get(`${BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(stale.status(), 401);
+    step("password reset via the dev link, signed in with the new password; old session revoked (401)");
+  } else {
+    step("password reset request accepted (no dev link: email provider configured or production)");
+  }
+
   if (errors.length) {
     console.error("Browser errors:\n  " + errors.join("\n  "));
     process.exitCode = 1;
