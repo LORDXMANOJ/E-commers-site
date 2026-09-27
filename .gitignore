@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local PostgreSQL data
+.pgdata/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test / tooling output
+coverage/
+playwright-report/
+test-results/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
