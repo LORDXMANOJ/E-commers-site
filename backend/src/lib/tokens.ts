@@ -29,9 +29,11 @@ export const sha256 = (value: string) => crypto.createHash("sha256").update(valu
 
 const ORDER_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // no 0/O/1/I look-alikes
 
-/** e.g. AUR-260928-7K3QZ9: a date for humans plus 30 random bits for uniqueness. */
+const istDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "2-digit", month: "2-digit", day: "2-digit" });
+
+/** e.g. AUR-260928-7K3QZ9: the order date (India time) for humans plus 30 random bits for uniqueness. */
 export function generateOrderNumber(date = new Date()): string {
-  const d = date.toISOString().slice(2, 10).replace(/-/g, "");
+  const d = istDate.format(date).replace(/-/g, "");
   let suffix = "";
   for (const b of crypto.randomBytes(6)) suffix += ORDER_ALPHABET[b % ORDER_ALPHABET.length];
   return `AUR-${d}-${suffix}`;

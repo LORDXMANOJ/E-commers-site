@@ -209,8 +209,8 @@ async function main() {
           images: p.images.map(img),
           featured: p.featured ?? false,
           categoryId: categoryIds.get(p.category)!,
-          // Stagger creation dates so "newest" sorting is meaningful.
-          createdAt: new Date(now - (products.length - i) * 36 * 60 * 60 * 1000),
+          // Stagger creation dates (interleaving categories) so "newest" sorting is meaningful.
+          createdAt: new Date(now - (((i * 7) % products.length) + 1) * 36 * 60 * 60 * 1000),
         },
       }),
     );
