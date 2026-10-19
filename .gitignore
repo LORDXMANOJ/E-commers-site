@@ -37,3 +37,7 @@ Thumbs.db
 
 # Private hosting notes kept on this machine only
 HOSTING.md
+
+# Demo walkthrough recordings (share them directly, not via git)
+demo-video/
+*.mp4
