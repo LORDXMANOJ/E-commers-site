@@ -5,6 +5,7 @@ import { ok, notFound, paginated } from "../../lib/http";
 import { prisma } from "../../lib/prisma";
 import { boolQuery, pageQuery } from "../../lib/schemas";
 import { SHIPPING, FREE_SHIPPING_THRESHOLD_PAISE } from "../../lib/money";
+import { SIZES } from "../../lib/sizes";
 import { productOrderBy, productSelect, productWhere } from "./catalog.service";
 
 export const productListQuery = z
@@ -15,6 +16,7 @@ export const productListQuery = z
     maxPrice: z.coerce.number().int().min(0).optional(),
     inStock: boolQuery,
     featured: boolQuery,
+    size: z.enum(SIZES).optional(),
     sort: z.enum(["newest", "price_asc", "price_desc", "popular"]).default("newest"),
     ...pageQuery,
     limit: z.coerce.number().int().min(1).max(48).default(12),

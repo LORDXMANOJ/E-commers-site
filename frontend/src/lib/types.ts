@@ -1,7 +1,9 @@
 export type Role = "CUSTOMER" | "ADMIN";
 export type OrderStatus = "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
-export type PaymentMethod = "COD" | "CARD_SIMULATED";
-export type PaymentStatus = "UNPAID" | "PAID" | "REFUNDED";
+export type PaymentMethod = "COD" | "CARD_SIMULATED" | "RAZORPAY";
+export type PaymentStatus = "UNPAID" | "PAID" | "REFUND_PENDING" | "REFUNDED";
+export type Size = "XS" | "S" | "M" | "L" | "XL" | "XXL" | "FREE_SIZE";
+export type Variant = { id: string; size: Size; stock: number };
 export type ShippingMethod = "STANDARD" | "EXPRESS";
 
 export type Address = {
@@ -44,16 +46,21 @@ export type Product = {
   featured: boolean;
   createdAt: string;
   category: CategoryRef;
+  /** Sizes in display order. Product.stock is the total across sizes. */
+  variants: Variant[];
 };
 
 export type AdminProduct = Product & { active: boolean; soldCount: number; categoryId: string; updatedAt: string };
 
 export type Paginated<T> = { items: T[]; page: number; limit: number; total: number; totalPages: number };
 
+/** In a cart line, stock is the stock of the chosen size. */
 export type CartProduct = Pick<Product, "id" | "name" | "slug" | "pricePaise" | "compareAtPaise" | "stock" | "images">;
 
 export type CartLine = {
   productId: string;
+  variantId: string;
+  size: Size;
   quantity: number;
   available: boolean;
   product: CartProduct;
@@ -65,6 +72,8 @@ export type Cart = { items: CartLine[]; itemCount: number; subtotalPaise: number
 export type OrderItem = {
   id: string;
   productId: string | null;
+  variantId: string | null;
+  size: Size | null;
   name: string;
   slug: string;
   imageUrl: string | null;
@@ -87,6 +96,10 @@ export type Order = {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   cardLast4: string | null;
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
+  razorpayRefundId?: string | null;
+  paymentExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
   items: OrderItem[];
@@ -95,7 +108,7 @@ export type Order = {
 };
 
 export type OrderSummary = Omit<Order, "items" | "events"> & {
-  items: Pick<OrderItem, "name" | "imageUrl" | "quantity">[];
+  items: Pick<OrderItem, "name" | "imageUrl" | "quantity" | "size">[];
   _count: { items: number };
 };
 
@@ -136,4 +149,24 @@ export type Customer = {
   createdAt: string;
   orderCount: number;
   totalSpentPaise: number;
+};
+
+/** Returned by checkout (RAZORPAY) and /orders/:id/pay. Public values only, never a secret. */
+export type PaymentSession = {
+  keyId: string;
+  mode: "test" | "live" | "off";
+  razorpayOrderId: string;
+  amountPaise: number;
+  currency: "INR";
+  orderId: string;
+  orderNumber: string;
+  expiresAt: string | null;
+};
+
+export type PlacedOrder = Order & { payment?: PaymentSession };
+
+export type StoreConfig = {
+  demo: boolean;
+  payments: { razorpay: boolean; mode: "test" | "live" | "off"; simulatedCard: boolean; cod: boolean };
+  uploads: { enabled: boolean };
 };

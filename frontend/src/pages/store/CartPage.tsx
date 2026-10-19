@@ -35,7 +35,7 @@ export default function CartPage() {
         <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_24rem] lg:gap-16">
           <ul className="space-y-8">
             {cart.lines.map((l) => (
-              <CartLineRow key={l.productId} line={l} />
+              <CartLineRow key={l.variantId} line={l} />
             ))}
           </ul>
 

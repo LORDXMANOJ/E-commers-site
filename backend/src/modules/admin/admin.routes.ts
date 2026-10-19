@@ -7,7 +7,11 @@ import { AppError, notFound, ok, paginated } from "../../lib/http";
 import { prisma } from "../../lib/prisma";
 import { idParam, pageQuery, slugSchema, slugify } from "../../lib/schemas";
 import { productWhere } from "../catalog/catalog.service";
-import { changeStatus, orderDetailInclude } from "../orders/orders.service";
+import crypto from "node:crypto";
+import { changeStatus, orderDetailInclude, requestRefund } from "../orders/orders.service";
+import { SIZES } from "../../lib/sizes";
+import { lockProducts, syncProductStock } from "../../lib/stock";
+import { cloudinaryEnabled, env } from "../../config/env";
 
 export const adminRouter = Router();
 // Every admin route requires a signed-in ADMIN. The UI hiding admin links is only cosmetic.
@@ -89,13 +93,22 @@ const productFields = z.object({
   pricePaise: z.number().int().min(100, "Price must be at least ₹1").max(100_000_000),
   compareAtPaise: z.number().int().min(0).max(100_000_000).nullable().optional(),
   categoryId: z.string().min(1, "Choose a category"),
-  stock: z.number().int().min(0).max(1_000_000),
   images: z.array(imageUrl).min(1, "Add at least one image").max(8),
   active: z.boolean().default(true),
   featured: z.boolean().default(false),
+  /** Stock per size. Free Size cannot be combined with other sizes. */
+  variants: z
+    .array(z.object({ size: z.enum(SIZES), stock: z.number().int().min(0).max(1_000_000) }))
+    .min(1, "Add at least one size")
+    .max(SIZES.length)
+    .refine((v) => new Set(v.map((x) => x.size)).size === v.length, "Each size can only be listed once")
+    .refine((v) => v.length === 1 || !v.some((x) => x.size === "FREE_SIZE"), "Free Size cannot be combined with other sizes"),
 });
 const createProduct = productFields;
 const updateProduct = productFields.partial().extend({ active: z.boolean().optional(), featured: z.boolean().optional() });
+
+const variantInclude = { variants: { select: { id: true, size: true, stock: true }, orderBy: { size: "asc" } } } as const;
+const sumStock = (v: { stock: number }[]) => v.reduce((n, x) => n + x.stock, 0);
 
 const adminProductQuery = z.object({
   q: z.string().trim().max(100).optional(),
@@ -123,7 +136,7 @@ adminRouter.get("/products", validate({ query: adminProductQuery }), async (_req
       orderBy: { updatedAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
-      include: { category: { select: { id: true, name: true, slug: true } } },
+      include: { category: { select: { id: true, name: true, slug: true } }, ...variantInclude },
     }),
     prisma.product.count({ where }),
   ]);
@@ -133,7 +146,7 @@ adminRouter.get("/products", validate({ query: adminProductQuery }), async (_req
 adminRouter.get("/products/:id", validate({ params: idParam }), async (_req, res) => {
   const product = await prisma.product.findUnique({
     where: { id: getParams(res, idParam).id },
-    include: { category: { select: { id: true, name: true, slug: true } } },
+    include: { category: { select: { id: true, name: true, slug: true } }, ...variantInclude },
   });
   if (!product) throw notFound("Product");
   ok(res, product);
@@ -148,7 +161,11 @@ adminRouter.post("/products", validate({ body: createProduct }), async (_req, re
   const data = getBody(res, createProduct);
   assertCompareAt(data.pricePaise, data.compareAtPaise);
   await assertCategory(data.categoryId);
-  const product = await prisma.product.create({ data: { ...data, slug: data.slug ?? slugify(data.name) } });
+  const { variants, ...fields } = data;
+  const product = await prisma.product.create({
+    data: { ...fields, slug: data.slug ?? slugify(data.name), stock: sumStock(variants), variants: { create: variants } },
+    include: variantInclude,
+  });
   ok(res, product, 201);
 });
 
@@ -162,13 +179,61 @@ adminRouter.patch("/products/:id", validate({ params: idParam, body: updateProdu
     data.compareAtPaise === undefined ? current.compareAtPaise : data.compareAtPaise,
   );
   if (data.categoryId) await assertCategory(data.categoryId);
-  ok(res, await prisma.product.update({ where: { id }, data }));
+  const { variants, ...fields } = data;
+  const product = await prisma.$transaction(async (tx) => {
+    await tx.product.update({ where: { id }, data: fields });
+    if (variants) {
+      // Same lock as checkout, so a stock edit and a purchase of the same product never interleave.
+      await lockProducts(tx, [id]);
+      for (const v of variants) {
+        await tx.productVariant.upsert({
+          where: { productId_size: { productId: id, size: v.size } },
+          create: { productId: id, size: v.size, stock: v.stock },
+          update: { stock: v.stock },
+        });
+      }
+      // Removing a size drops it from carts; past orders keep their size snapshot.
+      await tx.productVariant.deleteMany({ where: { productId: id, size: { notIn: variants.map((v) => v.size) } } });
+      await syncProductStock(tx, [id]);
+    }
+    return tx.product.findUniqueOrThrow({ where: { id }, include: variantInclude });
+  });
+  ok(res, product);
 });
 
 // Order history keeps its snapshot (name, price, image) even after a product is deleted.
 adminRouter.delete("/products/:id", validate({ params: idParam }), async (_req, res) => {
   await prisma.product.delete({ where: { id: getParams(res, idParam).id } });
   ok(res, { message: "Product deleted" });
+});
+
+/* ─────────────────────────── Image uploads ─────────────────────────── */
+
+const UPLOAD_FORMATS = "avif,jpg,jpeg,png,webp";
+
+/**
+ * Signed parameters for a direct browser upload to Cloudinary. The file never passes through this server
+ * (Render's disk is wiped on every deploy) and the API secret never leaves it.
+ * Signature rules: https://cloudinary.com/documentation/authentication_signatures
+ */
+adminRouter.post("/uploads/signature", (_req, res) => {
+  if (!cloudinaryEnabled) throw new AppError(503, "Image uploads are not configured. Paste an image URL instead.");
+  const params = {
+    allowed_formats: UPLOAD_FORMATS,
+    folder: "aurelle/products",
+    timestamp: String(Math.floor(Date.now() / 1000)),
+  };
+  const toSign = Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("&");
+  const signature = crypto.createHash("sha1").update(toSign + env.CLOUDINARY_API_SECRET).digest("hex");
+  ok(res, {
+    uploadUrl: `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/image/upload`,
+    apiKey: env.CLOUDINARY_API_KEY,
+    signature,
+    ...params,
+  });
 });
 
 /* ─────────────────────────── Categories ─────────────────────────── */
@@ -250,6 +315,11 @@ adminRouter.get("/orders/:id", validate({ params: idParam }), async (_req, res) 
 adminRouter.patch("/orders/:id/status", validate({ params: idParam, body: statusBody }), async (_req, res) => {
   const { status, note } = getBody(res, statusBody);
   ok(res, await changeStatus(getParams(res, idParam).id, status, note));
+});
+
+/** Retries a Razorpay refund that could not be started automatically when the order was cancelled. */
+adminRouter.post("/orders/:id/refund", validate({ params: idParam }), async (_req, res) => {
+  ok(res, await requestRefund(getParams(res, idParam).id));
 });
 
 /* ─────────────────────────── Customers ─────────────────────────── */

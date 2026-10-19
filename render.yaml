@@ -1,5 +1,6 @@
 # Render Blueprint for the Aurelle API (https://render.com/docs/blueprint-spec)
-# The database lives on Neon (or Supabase); paste its connection string into DATABASE_URL.
+# The database lives on Supabase or Neon; paste its connection string into DATABASE_URL.
+# Supabase: use the "Session pooler" string (port 5432) from Connect. See HOSTING.md if you have it locally.
 services:
   - type: web
     name: aurelle-api
@@ -16,7 +17,7 @@ services:
       - key: NODE_VERSION
         value: "20"
       - key: DATABASE_URL
-        sync: false # Neon connection string, with ?sslmode=require
+        sync: false # Supabase session pooler or Neon string
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
@@ -27,3 +28,20 @@ services:
         sync: false # emails promoted to ADMIN when they register or sign in
       - key: RESEND_API_KEY
         sync: false # optional: sends real password-reset emails
+      # Razorpay: TEST keys only for the demo (rzp_test_...). The API refuses to start with live keys
+      # unless RAZORPAY_ALLOW_LIVE=true. Leave all three empty to hide online payment.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false # the secret you type when creating the webhook in the Razorpay Dashboard
+      - key: RAZORPAY_ALLOW_LIVE
+        value: "false"
+      # Cloudinary: admin image uploads. Optional; without it admins paste image URLs.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

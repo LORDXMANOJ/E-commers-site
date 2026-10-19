@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (lines.length) {
         try {
           const cart = await post<Cart>("/cart/merge", {
-            items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+            items: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
           });
           qc.setQueryData(["cart"], cart);
           guestCart.clear();

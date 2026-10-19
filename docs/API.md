@@ -79,13 +79,17 @@ Password rules: 8–72 characters with at least one letter and one number. Email
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/products` | Active products. Query: `q` (name/description, case-insensitive), `category` (slug), `minPrice`, `maxPrice` (paise), `inStock=true`, `featured=true`, `sort=newest\|price_asc\|price_desc\|popular`, `page`, `limit` (≤ 48) |
+| GET | `/products` | Active products. Query: `q` (name/description, case-insensitive), `category` (slug), `minPrice`, `maxPrice` (paise), `inStock=true`, `featured=true`, `size=XS|S|M|L|XL|XXL|FREE_SIZE` (that size in stock), `sort=newest\|price_asc\|price_desc\|popular`, `page`, `limit` (≤ 48) |
 | GET | `/products/:slug` | One active product, or `404` |
 | GET | `/products/:slug/related` | Up to 4 active products from the same category |
 | GET | `/categories` | All categories with `productCount` (active products only) |
 | GET | `/shipping-options` | `{ freeShippingThresholdPaise, methods: [{ id, label, eta, pricePaise }] }` |
 
-Product shape: `{ id, name, slug, description, pricePaise, compareAtPaise | null, stock, images[], featured, createdAt, category: { id, name, slug } }`.
+Product shape: `{ id, name, slug, description, pricePaise, compareAtPaise | null, stock, images[], featured, createdAt, category: { id, name, slug }, variants: [{ id, size, stock }] }`. `stock` is the total across sizes; `variants` are in size order.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/config` | Public feature flags: `{ demo, payments: { razorpay, mode: "test"\|"live"\|"off", simulatedCard, cod }, uploads: { enabled } }`. Never contains secrets. |
 
 ## Cart: `/cart` (bearer)
 
@@ -93,12 +97,12 @@ The server-side cart for signed-in users. Guests keep a cart in `localStorage`, 
 
 | Method | Path | Body | Description |
 | --- | --- | --- | --- |
-| GET | `/cart` | none | `{ items: [{ productId, quantity, available, product, lineTotalPaise }], itemCount, subtotalPaise }`, priced live from the database |
-| POST | `/cart/items` | `{ productId, quantity? = 1 }` | Adds to the existing quantity; `409` if that exceeds stock; `404` for unknown or inactive products |
-| PATCH | `/cart/items/:productId` | `{ quantity }` (1–20) | Sets the quantity; `409` if over stock |
-| DELETE | `/cart/items/:productId` | none | Removes one line |
+| GET | `/cart` | none | `{ items: [{ productId, variantId, size, quantity, available, product, lineTotalPaise }], itemCount, subtotalPaise }`, priced live from the database. `product.stock` is the stock of that size. |
+| POST | `/cart/items` | `{ variantId, quantity? = 1 }` | Adds one size to the existing quantity; `409` if that exceeds the size's stock; `404` for unknown sizes or inactive products |
+| PATCH | `/cart/items/:variantId` | `{ quantity }` (1–20) | Sets the quantity; `409` if over stock |
+| DELETE | `/cart/items/:variantId` | none | Removes one line |
 | DELETE | `/cart` | none | Empties the cart |
-| POST | `/cart/merge` | `{ items: [{ productId, quantity }] }` | Merges a guest cart: quantities are summed and capped at stock, and unknown or inactive products are skipped |
+| POST | `/cart/merge` | `{ items: [{ variantId, quantity }] }` | Merges a guest cart: quantities are summed and capped at stock, and unknown, sold-out or inactive items are skipped |
 
 ## Orders: `/orders` (bearer)
 
@@ -107,7 +111,9 @@ The server-side cart for signed-in users. Guests keep a cart in `localStorage`, 
 | POST | `/orders` | Checkout from the caller's server cart (see below). `201` with the full order |
 | GET | `/orders` | The caller's orders, newest first (paginated, `limit` ≤ 50) |
 | GET | `/orders/:id` | One of the caller's orders with `items` and `events`. **Another customer's order returns `404`** |
-| POST | `/orders/:id/cancel` | Cancels the caller's own order while it is `PENDING`, restoring stock. `409` otherwise |
+| POST | `/orders/:id/cancel` | Cancels the caller's own order while it is `PENDING`, restoring stock and refunding a paid Razorpay order. `409` otherwise |
+| POST | `/orders/:id/pay` | Returns a new Razorpay checkout session for the caller's unpaid `RAZORPAY` order (retry after a failure or a closed window). `409` once paid, cancelled or past `paymentExpiresAt` |
+| POST | `/orders/:id/verify` | `{ razorpay_payment_id, razorpay_signature }` from Razorpay Checkout. The server checks the HMAC-SHA256 signature of `razorpayOrderId|paymentId` against the Razorpay order id **it stored**, fetches the payment from Razorpay, checks order id, amount and currency, captures it if only authorised, then marks the order `PAID`. Idempotent. `400` on a bad signature or mismatch |
 
 ### Checkout body
 
@@ -115,7 +121,7 @@ The server-side cart for signed-in users. Guests keep a cart in `localStorage`, 
 {
   "shippingAddress": { "fullName": "Asha Rao", "phone": "9876543210", "line1": "12 MG Road", "city": "Bengaluru", "state": "Karnataka", "postalCode": "560001" },
   "shippingMethod": "STANDARD",
-  "paymentMethod": "COD",
+  "paymentMethod": "COD" | "RAZORPAY" | "CARD_SIMULATED",
   "card": { "name": "Asha Rao", "number": "4242 4242 4242 4242", "expiry": "12/30", "cvc": "123" },
   "saveAddress": true
 }
@@ -124,17 +130,24 @@ The server-side cart for signed-in users. Guests keep a cart in `localStorage`, 
 - `card` is required only when `paymentMethod` is `CARD_SIMULATED`. The number must pass a Luhn check and the
   expiry must be in the future. `4000 0000 0000 0002` is always declined (`402`). No payment provider is contacted.
   Only the last four digits are stored.
+- `RAZORPAY` (only when the API has Razorpay keys): the order is created `PENDING` / `UNPAID`, its stock is held for
+  `PAYMENT_HOLD_MINUTES` (default 30), a Razorpay order is created server-side, and the response includes
+  `payment: { keyId, mode, razorpayOrderId, amountPaise, currency, orderId, orderNumber, expiresAt }` for Razorpay
+  Checkout. If Razorpay can't be reached, the order is cancelled and the stock released (`502`). Unpaid orders are
+  cancelled after the hold; before that, Razorpay is asked whether a payment went through.
 - **The client never sends prices or totals.** Items come from the server cart, and the server calculates the
   subtotal from current database prices. Standard shipping is ₹99, or free from a ₹2,999 subtotal; Express is ₹249.
   Extra fields such as `totalPaise` are ignored.
 - **Everything runs in one database transaction:** lock the cart row (so a double-submitted checkout cannot place two
-  orders), decrement each product with a conditional
-  `UPDATE … SET stock = stock - qty WHERE stock >= qty` (so concurrent orders can never oversell), create the order with
-  item snapshots (name, slug, image, unit price) and a `PENDING` timeline event, then empty the cart. If any item is
-  short, the whole checkout rolls back with `409` ("Only 2 of Rare Ring left in stock").
+  orders), lock the products in id order, decrement each size with a conditional
+  `UPDATE … SET stock = stock - qty WHERE stock >= qty` (so concurrent orders can never oversell), recompute product
+  totals, create the order with item snapshots (name, slug, size, image, unit price) and a `PENDING` timeline event,
+  then empty the cart. If any item is short, the whole checkout rolls back with `409` ("Only 2 of Rare Ring (M) left
+  in stock").
 
 Order shape: `{ id, orderNumber, status, subtotalPaise, shippingPaise, totalPaise, shippingAddress, shippingMethod,
-paymentMethod, paymentStatus: "UNPAID" | "PAID" | "REFUNDED", cardLast4, createdAt, items[], events[] }`.
+paymentMethod, paymentStatus: "UNPAID" | "PAID" | "REFUND_PENDING" | "REFUNDED", cardLast4, razorpayOrderId,
+razorpayPaymentId, razorpayRefundId, paymentExpiresAt, createdAt, items[], events[] }`. Each item has `size`.
 
 ### Status lifecycle
 
@@ -144,7 +157,10 @@ PENDING ──► CONFIRMED ──► SHIPPED ──► DELIVERED
    └────────────┴──► CANCELLED
 ```
 
-Cancelling restores stock and marks a paid simulated-card order as `REFUNDED`. Delivering a cash-on-delivery order
+Cancelling restores stock and marks a paid simulated-card order as `REFUNDED`. For a paid Razorpay order it commits
+the cancellation first, then requests a full refund (`REFUND_PENDING`, then `REFUNDED` on `refund.processed`). If
+Razorpay refuses, a timeline note is added and an admin can retry. A `RAZORPAY` order can't be `CONFIRMED` until it is
+`PAID`. Delivering a cash-on-delivery order
 marks it `PAID`. Status changes use a conditional update on the current status, so two simultaneous changes cannot
 both apply.
 
@@ -157,8 +173,8 @@ Every route below returns `401` without a token and `403` for customers.
 | GET | `/admin/stats` | `revenuePaise`, `orderCount`, `pendingCount`, `customerCount`, `averageOrderPaise` (non-cancelled orders), `lowStock` (active, stock ≤ 5), `recentOrders`, and `sales` (14 days of `{ date, revenuePaise, orders }`, India time) |
 | GET | `/admin/products` | All products, including hidden ones. Query: `q`, `category` (slug), `status=all\|active\|inactive\|low`, `page`, `limit` |
 | GET | `/admin/products/:id` | One product |
-| POST | `/admin/products` | `{ name, slug?, description, pricePaise, compareAtPaise?, categoryId, stock, images[1–8], active?, featured? }`. The slug is generated from the name if omitted. `compareAtPaise` must be higher than `pricePaise`. |
-| PATCH | `/admin/products/:id` | Any subset of the fields above |
+| POST | `/admin/products` | `{ name, slug?, description, pricePaise, compareAtPaise?, categoryId, variants: [{ size, stock }], images[1–8], active?, featured? }`. Sizes are unique; `FREE_SIZE` can't be combined with other sizes. The slug is generated from the name if omitted. `compareAtPaise` must be higher than `pricePaise`. |
+| PATCH | `/admin/products/:id` | Any subset of the fields above. `variants`, when sent, is the full size list: listed sizes are set, unlisted sizes are removed (and dropped from bags; past orders keep their size snapshot) |
 | DELETE | `/admin/products/:id` | Deletes the product; past orders keep their snapshots |
 | GET | `/admin/categories` | Categories with `productCount` (all products) |
 | POST | `/admin/categories` | `{ name, slug?, description?, imageUrl? }` |
@@ -167,7 +183,17 @@ Every route below returns `401` without a token and `403` for customers.
 | GET | `/admin/orders` | Query: `status`, `q` (order number, customer name or email), `page`, `limit` |
 | GET | `/admin/orders/:id` | Full order including `user` |
 | PATCH | `/admin/orders/:id/status` | `{ status, note? }`. Only valid transitions; `409` otherwise |
+| POST | `/admin/orders/:id/refund` | Retries the Razorpay refund for a cancelled order still in `REFUND_PENDING`. Does nothing if a refund id is already recorded |
+| POST | `/admin/uploads/signature` | Signed parameters for uploading one image directly from the browser to Cloudinary (`folder`, `allowed_formats`, `timestamp`, `signature`, `apiKey`, `uploadUrl`). `503` when Cloudinary isn't configured. The API secret never leaves the server |
 | GET | `/admin/customers` | Query: `q`, `role`, `page`, `limit`. Each row includes `orderCount` and `totalSpentPaise` |
+
+## Webhooks: `/webhooks/razorpay`
+
+Called by Razorpay, not by the browser. Mounted before the JSON parser so the signature can be checked against the raw
+body: HMAC-SHA256 with `RAZORPAY_WEBHOOK_SECRET`, sent in `X-Razorpay-Signature`. Each `X-Razorpay-Event-Id` is
+recorded, and repeats return `200 { duplicate: true }`. Handled events: `payment.authorized`, `payment.captured`,
+`order.paid` (confirm the payment as `/verify` does), `payment.failed` (timeline note; the customer can retry),
+`refund.processed` and `refund.failed`. Invalid signatures return `400`; `503` if no webhook secret is set.
 
 ## Example session
 
@@ -176,9 +202,9 @@ API=http://localhost:4000/api
 TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"demo@aurelle.dev","password":"Demo1234"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).data.token')
 
-PRODUCT=$(curl -s "$API/products?limit=1&inStock=true" | node -pe 'JSON.parse(require("fs").readFileSync(0)).data.items[0].id')
+VARIANT=$(curl -s "$API/products?limit=1&inStock=true" | node -pe 'JSON.parse(require("fs").readFileSync(0)).data.items[0].variants.find((v) => v.stock > 0).id')
 curl -s -X POST $API/cart/items -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"productId\":\"$PRODUCT\",\"quantity\":1}"
+  -d "{\"variantId\":\"$VARIANT\",\"quantity\":1}"
 
 curl -s -X POST $API/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{
   "shippingAddress": {"fullName":"Demo Customer","phone":"9876543210","line1":"14 Indiranagar","city":"Bengaluru","state":"Karnataka","postalCode":"560038"},

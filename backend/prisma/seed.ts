@@ -1,150 +1,187 @@
 /**
- * OPTIONAL demo data. The app works with an empty database; run this only to get a populated store.
+ * OPTIONAL demo data for the Aurelle women's-wear demo. The app works with an empty database; run this only
+ * to get a populated store. Everything here is FICTIONAL: products, prices, customers and orders.
  *
  *   npm run db:seed
  *
  * WARNING: wipes all existing data first. Refuses to run with NODE_ENV=production unless
- * SEED_FORCE=1 is set explicitly.
+ * SEED_FORCE=1 is set explicitly. Never run it against a real store's database.
+ *
+ * Photos: Pexels (https://www.pexels.com/license/), free to use, no attribution required. They show models,
+ * not real Aurelle products, and must be replaced with the store's own photography before going live.
  */
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { PrismaClient, type OrderStatus, type PaymentMethod, type Product } from "@prisma/client";
+import { PrismaClient, type OrderStatus, type PaymentMethod, type Product, type ProductVariant, type Size } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const img = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1200&q=80`;
+const img = (id: number) => `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=1200`;
 const rupees = (r: number) => Math.round(r * 100);
 
 const categories = [
-  { slug: "outerwear", name: "Outerwear", description: "Coats and jackets cut to layer through every season.", image: "1539533018447-63fcce2678e3" },
-  { slug: "tops", name: "Tops & Shirts", description: "Tees, knits and shirting in natural fibres.", image: "1490481651871-ab68de25d43d" },
-  { slug: "dresses", name: "Dresses", description: "From easy day dresses to evening silhouettes.", image: "1595777457583-95e059d581b8" },
-  { slug: "trousers-denim", name: "Trousers & Denim", description: "Selvedge denim, tailoring and relaxed trousers.", image: "1604176354204-9268737828e4" },
-  { slug: "footwear", name: "Footwear", description: "Leather shoes and boots built to be resoled.", image: "1614252235316-8c857d38b5f4" },
-  { slug: "bags-accessories", name: "Bags & Accessories", description: "Leather goods, jewellery and finishing touches.", image: "1584917865442-de89df76afd3" },
+  { slug: "sarees", name: "Sarees", description: "Handloom cottons, silks and organzas, each six yards draped with care.", image: 28943474 },
+  { slug: "kurtas", name: "Kurtas & Kurtis", description: "Everyday and festive kurtas in block prints, chikankari and soft cottons.", image: 28213774 },
+  { slug: "lehengas", name: "Lehengas", description: "Occasion lehengas with hand embroidery, mirror work and flowing dupattas.", image: 37628608 },
+  { slug: "anarkalis", name: "Anarkalis & Gowns", description: "Floor-sweeping anarkalis and gowns for celebrations big and small.", image: 34673508 },
+  { slug: "suit-sets", name: "Suit Sets & Dupattas", description: "Coordinated kurta sets, sharara sets and statement dupattas.", image: 13584935 },
+  { slug: "jewellery", name: "Jewellery", description: "Jhumkas and earrings in temple gold, kundan and oxidised silver.", image: 13595577 },
 ];
+
+const GARMENT: Size[] = ["XS", "S", "M", "L", "XL", "XXL"];
+const LEHENGA: Size[] = ["XS", "S", "M", "L", "XL"];
 
 type SeedProduct = {
   name: string;
   category: string;
   price: number;
   compareAt?: number;
-  stock: number;
-  images: string[];
+  images: number[];
   featured?: boolean;
   description: string;
+  /** Free Size stock (number) or stock per size. */
+  stock: number | Partial<Record<Size, number>>;
 };
 
+/** Spreads a total across sizes, heavier in the middle, like a real size curve. */
+function curve(sizes: Size[], total: number): Partial<Record<Size, number>> {
+  const weights = sizes.map((_, i) => 1 + Math.min(i, sizes.length - 1 - i));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  return Object.fromEntries(sizes.map((s, i) => [s, Math.max(0, Math.round((total * weights[i]) / sum))]));
+}
+
 const products: SeedProduct[] = [
-  // Outerwear
-  { name: "Camel Wrap Coat", category: "outerwear", price: 12990, stock: 14, featured: true, images: ["1539533018447-63fcce2678e3", "1483985988355-763728e1935b"],
-    description: "A double-faced wool blend coat with a self-tie belt and dropped shoulders. Unlined so it drapes softly, with deep side pockets and a length that sits just below the knee." },
-  { name: "Tartan Wool Overcoat", category: "outerwear", price: 14490, compareAt: 17990, stock: 6, images: ["1485968579580-b6d095142e6e"],
-    description: "Navy and forest tartan in a dense brushed wool. Notched lapels, a single-breasted front and a half lining in cupro for easy layering over knitwear." },
-  { name: "Olive Utility Jacket", category: "outerwear", price: 6990, stock: 22, images: ["1544022613-e87ca75a784a"],
-    description: "Garment-dyed cotton twill with four patch pockets and a two-way zip under a storm placket. Softens further with every wash." },
-  { name: "Black Leather Biker", category: "outerwear", price: 18990, stock: 3, featured: true, images: ["1551028719-00167b16eac5"],
-    description: "Vegetable-tanned lambskin with an asymmetric zip, snap-down lapels and belted hem. Stiff at first, then moulds to you over the years." },
-  { name: "Cognac Moto Jacket", category: "outerwear", price: 16490, stock: 5, images: ["1487222477894-8943e31ef7b2"],
-    description: "A warmer take on the biker in semi-aniline cognac leather, with quilted shoulders and a soft cotton lining." },
-  { name: "Clay Bomber", category: "outerwear", price: 5490, compareAt: 6990, stock: 18, images: ["1591047139829-d91aecb6caea"],
-    description: "Lightweight recycled nylon in a dusty clay shade, with ribbed cuffs and hem and a hidden inner pocket for your phone." },
+  // Sarees (Free Size)
+  { name: "Saffron Organza Saree", category: "sarees", price: 8490, stock: 9, featured: true, images: [28943474],
+    description: "Sheer saffron organza with a woven zari border and a contrast pallu. Comes with an unstitched blouse piece. Dry clean only." },
+  { name: "Ivory Kasavu Tissue Saree", category: "sarees", price: 6990, stock: 12, images: [37054322, 37123882],
+    description: "Kerala-style kasavu in soft tissue cotton with a gold border. Light enough for a long day of celebrations." },
+  { name: "Crimson Banarasi Saree", category: "sarees", price: 12490, compareAt: 14990, stock: 5, featured: true, images: [20161456],
+    description: "Pure silk Banarasi in deep crimson with a silver-toned zari border. A wedding-season classic that drapes beautifully." },
+  { name: "Midnight Zari Border Saree", category: "sarees", price: 9290, stock: 7, images: [30004204],
+    description: "Black chanderi silk with a broad mustard-gold border. Pairs with a solid gold or black blouse." },
+  { name: "Marigold Cotton Saree", category: "sarees", price: 3490, stock: 24, images: [40290281],
+    description: "Breathable handloom cotton in a sunny marigold, finished with a thin red border. An easy everyday drape." },
+  { name: "Teal Mul Cotton Saree", category: "sarees", price: 4290, stock: 15, images: [7176430, 7176438],
+    description: "Feather-light mul cotton in teal with a silver tissue border. Softens with every wash." },
+  { name: "Indigo Ajrakh Saree", category: "sarees", price: 5890, stock: 8, images: [34368242],
+    description: "Hand block-printed ajrakh in natural indigo and madder. Each piece varies slightly, as hand prints do." },
+  { name: "Magenta Paithani Saree", category: "sarees", price: 15990, stock: 2, images: [7326221],
+    description: "Silk Paithani in magenta with a peacock-motif pallu, woven on a traditional handloom." },
+  { name: "Maroon Kanjivaram Silk Saree", category: "sarees", price: 18490, stock: 3, images: [17040985],
+    description: "Heavy Kanjivaram silk in maroon with a temple border in antique gold zari. An heirloom piece." },
+  { name: "Aubergine Handloom Silk Saree", category: "sarees", price: 7290, stock: 10, images: [28058186, 7920188],
+    description: "Aubergine handloom silk with a subtle self-woven texture and a teal-edged pallu." },
+  { name: "Sky Blue Chiffon Saree", category: "sarees", price: 2990, stock: 30, images: [35867845],
+    description: "Flowing chiffon in sky blue with a fine sequinned edge. Packs small and drapes in minutes." },
+  { name: "Wine Georgette Saree", category: "sarees", price: 4790, stock: 0, images: [11629757],
+    description: "Wine georgette with a delicate satin border. Back in the next production run." },
 
-  // Tops & Shirts
-  { name: "Essential Crew Tee", category: "tops", price: 1290, stock: 80, images: ["1521572163474-6864f9cf17ab"],
-    description: "Our everyday tee in 180 gsm combed Supima cotton. A close neckline that keeps its shape, and a length made for tucking or not." },
-  { name: "Heavyweight Black Tee", category: "tops", price: 1690, stock: 64, images: ["1583743814966-8936f5b7be1a", "1576871337622-98d48d1cf531"],
-    description: "A boxy 260 gsm tee with a thick ribbed collar. Pigment-dyed for a lived-in black that fades gracefully." },
-  { name: "Marigold Sweatshirt", category: "tops", price: 3290, stock: 26, featured: true, images: ["1578587018452-892bacefd3f2"],
-    description: "Loopback organic cotton in a saturated marigold. Raglan sleeves, a relaxed body and a soft brushed interior." },
-  { name: "Cloud Fleece Crewneck", category: "tops", price: 2990, stock: 31, images: ["1620799140408-edc6dcb6d633"],
-    description: "Airy brushed fleece in optic white with a clean, slightly cropped fit. The sweatshirt you will reach for first." },
-  { name: "Ruffled Poplin Blouse", category: "tops", price: 3890, stock: 12, images: ["1609505848912-b7c3b8b4beda"],
-    description: "Crisp cotton poplin with a tiered ruffle at the neckline that can be worn on or off the shoulder." },
-  { name: "Chambray Work Shirt", category: "tops", price: 2790, stock: 40, images: ["1558171813-4c088753af8f"],
-    description: "Light indigo chambray with twin chest pockets, a curved hem and corozo buttons. Gets better with every wash." },
-  { name: "Crisp Poplin Shirt", category: "tops", price: 2490, stock: 2, images: ["1603252109303-2751441dd157", "1602810318383-e386cc2a3ccf"],
-    description: "A sharp white shirt in two-ply cotton poplin with a semi-spread collar. Made for tailoring and just as good untucked." },
-  { name: "Open-Knit Poncho", category: "tops", price: 3490, compareAt: 4290, stock: 9, images: ["1434389677669-e08b4cac3105"],
-    description: "Hand-finished open knit in undyed cotton with a fringed hem. Throw it over a slip dress or a plain tee." },
+  // Kurtas
+  { name: "Rose Chikankari Kurta", category: "kurtas", price: 3290, stock: curve(GARMENT, 28), featured: true, images: [35445207],
+    description: "Hand-embroidered Lucknowi chikankari on rose cotton, with a straight hem and side slits. Pairs with white palazzos." },
+  { name: "Mustard Ajrakh A-Line Kurta", category: "kurtas", price: 2690, stock: curve(GARMENT, 34), images: [28213774, 28213745],
+    description: "Block-printed ajrakh in mustard and indigo with a flared A-line cut, three-quarter sleeves and a keyhole neck." },
+  { name: "Fuchsia Floral Straight Kurta", category: "kurtas", price: 1990, stock: curve(GARMENT, 40), images: [35504991],
+    description: "Soft rayon with an all-over fuchsia floral print. Works with jeans for college or with leggings for the office." },
+  { name: "Mint Floral Kurti", category: "kurtas", price: 1690, compareAt: 2190, stock: curve(GARMENT, 26), images: [35504999],
+    description: "A short kurti in cotton cambric with teal florals and cuffed sleeves. Machine washable." },
+  { name: "Peach Printed Kurta", category: "kurtas", price: 1890, stock: { S: 3, M: 6, L: 4, XL: 0 }, images: [12279088],
+    description: "Peach cotton with a fine white print and pin-tucked yoke. Size XL is sold out." },
+  { name: "Dove Grey Cotton Kurta", category: "kurtas", price: 1590, stock: curve(GARMENT, 22), images: [13554746],
+    description: "A minimal grey kurta in khadi-finish cotton with a mandarin collar. Our quietest everyday piece." },
+  { name: "Lime Embroidered Kurta", category: "kurtas", price: 2290, stock: { XS: 1, S: 2, M: 1, L: 0, XL: 1, XXL: 0 }, images: [33824989],
+    description: "Lime cotton silk with tonal thread embroidery at the yoke. Only a few left in each size." },
 
-  // Dresses
-  { name: "Scarlet Maxi Dress", category: "dresses", price: 7490, stock: 8, featured: true, images: ["1595777457583-95e059d581b8"],
-    description: "Fluid crêpe cut on the bias for a full, sweeping skirt. Halter neckline and an open back with a covered-button closure." },
-  { name: "Floral Wrap Dress", category: "dresses", price: 4990, stock: 16, images: ["1496747611176-843222e1e57c"],
-    description: "Printed viscose with a true wrap front, flutter sleeves and a midi hem that moves in the breeze." },
-  { name: "Crimson Swing Dress", category: "dresses", price: 5490, compareAt: 6490, stock: 11, images: ["1572804013309-59a88b7e92f1"],
-    description: "A fitted bodice and full swing skirt in printed cotton sateen, finished with a wide statement belt." },
-  { name: "Plum Off-Shoulder Gown", category: "dresses", price: 9990, stock: 4, images: ["1566174053879-31528523f8ae"],
-    description: "Stretch velvet with a structured off-shoulder neckline and a column skirt. For evenings that call for it." },
-  { name: "Broderie Mini Dress", category: "dresses", price: 4290, stock: 0, images: ["1515372039744-b8f02a3ae446"],
-    description: "White cotton broderie anglaise with an elasticated off-shoulder neckline and tiered skirt." },
-  { name: "Olive Belted Playsuit", category: "dresses", price: 3690, stock: 13, images: ["1618932260643-eee4a2f652a6"],
-    description: "Washed linen blend with adjustable straps and a self-belt. Pockets, of course." },
+  // Lehengas
+  { name: "Rani Pink Sequin Lehenga", category: "lehengas", price: 32990, compareAt: 38990, stock: curve(LEHENGA, 9), featured: true, images: [37628608, 37628619],
+    description: "Georgette lehenga in rani pink with all-over sequin and thread work, a matching blouse and a sheer net dupatta." },
+  { name: "Blush Mirror-Work Lehenga", category: "lehengas", price: 24990, stock: curve(LEHENGA, 8), images: [33343591],
+    description: "Blush pink with mirror and gota detailing on the choli and hem. The dupatta has a scalloped border." },
+  { name: "Ivory Chikankari Lehenga", category: "lehengas", price: 21490, stock: curve(LEHENGA, 6), images: [35637857],
+    description: "Ivory georgette with chikankari and sequin highlights. A daytime wedding favourite." },
+  { name: "Ruby Velvet Lehenga", category: "lehengas", price: 28990, stock: { S: 1, M: 2, L: 1 }, images: [12062663],
+    description: "Ruby velvet skirt with zardozi embroidery and a net dupatta with a heavy border. Limited sizes." },
+  { name: "Rose Brocade Lehenga", category: "lehengas", price: 18990, stock: curve(LEHENGA, 10), images: [16803130],
+    description: "Rose brocade skirt with a contrast gold dupatta, light enough for sangeet nights." },
+  { name: "Mocha Printed Lehenga Set", category: "lehengas", price: 9990, stock: curve(LEHENGA, 12), images: [38526708],
+    description: "A printed cotton-silk lehenga set in mocha and rust, ideal for festive lunches and mehendi." },
 
-  // Trousers & Denim
-  { name: "Selvedge Straight Jeans", category: "trousers-denim", price: 5990, stock: 35, featured: true, images: ["1604176354204-9268737828e4"],
-    description: "13.5 oz Japanese selvedge denim, rinsed once. A straight leg with a mid rise that works with boots or trainers." },
-  { name: "Raw Indigo Jeans", category: "trousers-denim", price: 4990, stock: 20, images: ["1624378439575-d8705ad7ae80"],
-    description: "Unwashed indigo that will fade to your own pattern. Slim through the thigh with a slight taper." },
-  { name: "Blush Satin Joggers", category: "trousers-denim", price: 3490, stock: 17, images: ["1594633312681-425c7b97ccd1"],
-    description: "Soft-sheen satin with an elasticated waist and cuffs and pleats at the front. Dresses up or down." },
-  { name: "Navy Tailored Trousers", category: "trousers-denim", price: 4490, stock: 24, images: ["1617137968427-85924c800a22"],
-    description: "Wool-blend suiting with a flat front, side adjusters and a clean break. Pairs with the matching blazer." },
+  // Anarkalis & Gowns
+  { name: "Violet Angrakha Anarkali", category: "anarkalis", price: 5490, stock: curve(GARMENT, 18), featured: true, images: [34673508],
+    description: "Deep violet angrakha anarkali with silver thread work and a flared kali skirt." },
+  { name: "Amber Gota Anarkali", category: "anarkalis", price: 8990, stock: curve(GARMENT, 14), images: [5922737, 5922734],
+    description: "Amber georgette anarkali with gota patti detailing and a sheer matching dupatta." },
+  { name: "Ivory Block-Print Anarkali", category: "anarkalis", price: 4990, stock: curve(GARMENT, 20), images: [18380705],
+    description: "Cotton anarkali in ivory with indigo block prints, paired with a printed dupatta." },
+  { name: "Sunflower Georgette Anarkali", category: "anarkalis", price: 6290, stock: curve(GARMENT, 16), images: [34658495],
+    description: "Sunflower yellow georgette that swirls when you move, with a thin gold lace at the hem." },
+  { name: "Scarlet Bandhani Anarkali", category: "anarkalis", price: 6790, compareAt: 7990, stock: curve(GARMENT, 15), images: [30268121, 30268123],
+    description: "Scarlet bandhani anarkali with mirror-work cuffs and a matching dupatta." },
+  { name: "Lilac Flared Gown", category: "anarkalis", price: 7490, stock: curve(GARMENT, 11), images: [12796269],
+    description: "A lilac gown with a fitted bodice and a full skirt, finished with a plum stole." },
+  { name: "Old Rose Embroidered Gown", category: "anarkalis", price: 11990, stock: { S: 2, M: 3, L: 2, XL: 1 }, images: [39299500],
+    description: "Old rose net gown with tonal embroidery and a soft inner lining." },
+  { name: "Powder Blue Net Gown", category: "anarkalis", price: 13490, stock: curve(LEHENGA, 7), images: [8538848],
+    description: "Powder blue net gown with silver resham embroidery and a matching dupatta." },
 
-  // Footwear
-  { name: "Cognac Leather Derby", category: "footwear", price: 8990, stock: 10, featured: true, images: ["1614252235316-8c857d38b5f4", "1614676471928-2ed0ad1061a4"],
-    description: "Burnished calf leather on a Goodyear-welted sole, so it can be resoled for years. Open lacing, rounded toe." },
-  { name: "Heritage Work Boots", category: "footwear", price: 10990, compareAt: 12990, stock: 7, images: ["1605812860427-4024433a70fd", "1479064555552-3ef4979f8908"],
-    description: "Oiled nubuck with a padded collar, speed hooks and a lugged commando sole for grip in the rain." },
-  { name: "Retro Runner Sneakers", category: "footwear", price: 6490, stock: 19, images: ["1560769629-975ec94e6a86"],
-    description: "A chunky runner in mixed suede and mesh with pops of colour and a cushioned foam midsole." },
-  { name: "Floral Stiletto Pumps", category: "footwear", price: 5790, stock: 1, images: ["1543163521-1bf539c55dd2"],
-    description: "Printed satin on a 95 mm heel with a pointed toe and a cushioned leather footbed." },
+  // Suit sets & dupattas
+  { name: "Emerald Silk Kurta Set", category: "suit-sets", price: 6490, stock: curve(GARMENT, 16), featured: true, images: [31861623],
+    description: "Emerald raw-silk kurta and straight pants with a striped silk dupatta in ochre and indigo." },
+  { name: "Fuchsia Suit with Floral Dupatta", category: "suit-sets", price: 4490, stock: curve(GARMENT, 20), images: [13584935],
+    description: "Fuchsia cotton kurta and pants with a printed floral mulmul dupatta." },
+  { name: "Scarlet Suit with Zari Dupatta", category: "suit-sets", price: 4790, stock: curve(GARMENT, 18), images: [13584942],
+    description: "Scarlet kurta and pants with a bottle-green dupatta striped in zari." },
+  { name: "Ivory Kurta Set with Printed Dupatta", category: "suit-sets", price: 3990, stock: curve(GARMENT, 22), images: [20788501],
+    description: "Ivory cotton kurta set with a terracotta block-printed dupatta." },
+  { name: "Coral Suit with Bloom Dupatta", category: "suit-sets", price: 4290, stock: curve(GARMENT, 14), images: [13584934],
+    description: "Coral anarkali-cut kurta with pants and a bold bloom-print chiffon dupatta." },
+  { name: "Blush Suit with Cobalt Dupatta", category: "suit-sets", price: 3890, stock: curve(GARMENT, 12), images: [13584972],
+    description: "Blush sleeveless kurta and pants with a cobalt bandhani dupatta." },
+  { name: "Silver Sharara Set", category: "suit-sets", price: 10990, stock: curve(LEHENGA, 8), images: [8031939],
+    description: "Grey-silver embroidered kurta with a flared sharara and an organza dupatta." },
+  { name: "Saffron Phulkari Dupatta", category: "suit-sets", price: 2490, stock: 18, images: [34251604],
+    description: "A saffron dupatta with Punjabi phulkari embroidery in silk thread. Free Size." },
 
-  // Bags & Accessories
-  { name: "Vermilion Top-Handle Bag", category: "bags-accessories", price: 11990, stock: 6, featured: true, images: ["1584917865442-de89df76afd3"],
-    description: "Structured calf leather with a polished turn-lock, a detachable shoulder strap and a suede-lined interior." },
-  { name: "Woven Rattan Handbag", category: "bags-accessories", price: 6490, stock: 9, images: ["1590874103328-eac38a683ce7"],
-    description: "Hand-woven rattan with leather trims, a rolled handle and a cotton drawstring pouch inside." },
-  { name: "Navy Commuter Backpack", category: "bags-accessories", price: 4290, stock: 28, images: ["1553062407-98eeb64c6a62"],
-    description: "Water-resistant recycled canvas with a padded 15-inch laptop sleeve and a luggage pass-through." },
-  { name: "Pearl Strand Necklace", category: "bags-accessories", price: 7990, stock: 5, images: ["1515562141207-7a88fb7ce338"],
-    description: "Freshwater pearls hand-knotted on silk with a sterling silver clasp. Arrives in a lined keepsake box." },
-  { name: "Gold Link Hoops", category: "bags-accessories", price: 2490, stock: 42, images: ["1617038220319-276d3cfab638"],
-    description: "Chunky curb-link hoops in 18k gold-plated recycled brass. Light enough for all-day wear." },
-  { name: "Round Metal Sunglasses", category: "bags-accessories", price: 3290, stock: 23, images: ["1511499767150-a48a237f0083"],
-    description: "Thin gold wire frames with green-tinted UV400 lenses and adjustable nose pads." },
-  { name: "Minimal Leather Watch", category: "bags-accessories", price: 6990, compareAt: 8490, stock: 12, images: ["1524592094714-0f0654e20314"],
-    description: "A 38 mm brushed steel case, sapphire-coated glass and an Italian leather strap that softens with wear." },
-  { name: "Saddle Leather Belt", category: "bags-accessories", price: 1990, stock: 37, images: ["1624222247344-550fb60583dc"],
-    description: "Full-grain bridle leather with a brass roller buckle and hand-painted edges." },
+  // Jewellery (Free Size)
+  { name: "Kundan Pearl Drop Jhumkas", category: "jewellery", price: 3490, stock: 14, featured: true, images: [13595577],
+    description: "Kundan jhumkas with pink and green stones and pearl drops. Gold-plated brass, push-back closure." },
+  { name: "Temple Gold Jhumkas", category: "jewellery", price: 2890, stock: 20, images: [29415954, 37601639],
+    description: "Temple-style jhumkas with ruby-tone stones in antique gold plating." },
+  { name: "Oxidised Silver Mirror Earrings", category: "jewellery", price: 1290, stock: 35, images: [20850030],
+    description: "Oxidised silver-tone earrings with mirror inlay and pearl fringes. Light for all-day wear." },
+  { name: "Silver Jhumka Duo", category: "jewellery", price: 990, stock: 4, images: [11203816],
+    description: "Two everyday pairs of oxidised jhumkas with enamel detail." },
 ];
 
 const customers = [
   { email: "demo@aurelle.dev", name: "Demo Customer", password: "Demo1234" },
-  { email: "priya.sharma@example.com", name: "Priya Sharma", password: "Customer123" },
-  { email: "arjun.mehta@example.com", name: "Arjun Mehta", password: "Customer123" },
+  { email: "ananya.iyer@example.com", name: "Ananya Iyer", password: "Customer123" },
+  { email: "meera.nair@example.com", name: "Meera Nair", password: "Customer123" },
+  { email: "kavya.reddy@example.com", name: "Kavya Reddy", password: "Customer123" },
 ];
 
+// Fictional addresses. Phone numbers are placeholders in a valid format, not real people.
 const addresses = [
   { fullName: "Demo Customer", phone: "9876543210", line1: "14, 2nd Cross, Indiranagar", line2: "", city: "Bengaluru", state: "Karnataka", postalCode: "560038", country: "India" },
-  { fullName: "Priya Sharma", phone: "9820012345", line1: "B-702, Sea Breeze Apartments, Bandra West", line2: "", city: "Mumbai", state: "Maharashtra", postalCode: "400050", country: "India" },
-  { fullName: "Arjun Mehta", phone: "9811098110", line1: "C-21, Hauz Khas", line2: "Near Deer Park", city: "New Delhi", state: "Delhi", postalCode: "110016", country: "India" },
+  { fullName: "Ananya Iyer", phone: "9820012345", line1: "B-702, Sea Breeze Apartments, Bandra West", line2: "", city: "Mumbai", state: "Maharashtra", postalCode: "400050", country: "India" },
+  { fullName: "Meera Nair", phone: "9811098110", line1: "C-21, Hauz Khas", line2: "Near Deer Park", city: "New Delhi", state: "Delhi", postalCode: "110016", country: "India" },
+  { fullName: "Kavya Reddy", phone: "9900011223", line1: "Plot 41, Road No. 12, Banjara Hills", line2: "", city: "Hyderabad", state: "Telangana", postalCode: "500034", country: "India" },
 ];
 
-// [customerIndex, daysAgo, status, payment, [productIndex, qty][]]
-const sampleOrders: [number, number, OrderStatus, PaymentMethod, [number, number][]][] = [
-  [0, 12, "DELIVERED", "CARD_SIMULATED", [[0, 1], [6, 2]]],
-  [1, 10, "DELIVERED", "COD", [[14, 1]]],
-  [2, 9, "DELIVERED", "CARD_SIMULATED", [[24, 1], [35, 1]]],
-  [1, 7, "SHIPPED", "CARD_SIMULATED", [[29, 1], [32, 2]]],
-  [0, 5, "SHIPPED", "COD", [[20, 1], [8, 1]]],
-  [2, 4, "CONFIRMED", "CARD_SIMULATED", [[3, 1]]],
-  [1, 3, "CANCELLED", "COD", [[17, 1]]],
-  [2, 2, "CONFIRMED", "COD", [[26, 1], [7, 3]]],
-  [0, 1, "PENDING", "COD", [[15, 1], [33, 1]]],
-  [1, 0, "PENDING", "CARD_SIMULATED", [[9, 2], [11, 1]]],
+// [customerIndex, daysAgo, status, payment, [productIndex, size, qty][]]
+const sampleOrders: [number, number, OrderStatus, PaymentMethod, [number, Size, number][]][] = [
+  [0, 13, "DELIVERED", "CARD_SIMULATED", [[0, "FREE_SIZE", 1], [41, "FREE_SIZE", 1]]],
+  [1, 11, "DELIVERED", "COD", [[12, "M", 1]]],
+  [2, 10, "DELIVERED", "CARD_SIMULATED", [[18, "S", 1]]],
+  [3, 8, "SHIPPED", "COD", [[25, "L", 1], [43, "FREE_SIZE", 2]]],
+  [1, 7, "SHIPPED", "CARD_SIMULATED", [[2, "FREE_SIZE", 1]]],
+  [0, 5, "CONFIRMED", "COD", [[13, "M", 2]]],
+  [2, 4, "CANCELLED", "COD", [[32, "L", 1]]],
+  [3, 3, "CONFIRMED", "CARD_SIMULATED", [[26, "M", 1], [42, "FREE_SIZE", 1]]],
+  [1, 2, "DELIVERED", "COD", [[14, "S", 1], [15, "M", 1]]],
+  [0, 1, "PENDING", "COD", [[33, "M", 1]]],
+  [2, 0, "PENDING", "CARD_SIMULATED", [[4, "FREE_SIZE", 2]]],
 ];
 
 const TIMELINE: OrderStatus[] = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED"];
@@ -153,6 +190,8 @@ function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+const sizeLabel = (s: Size) => (s === "FREE_SIZE" ? "Free Size" : s);
+
 async function main() {
   if (process.env.NODE_ENV === "production" && process.env.SEED_FORCE !== "1") {
     throw new Error("Refusing to seed in production. Set SEED_FORCE=1 if you really mean it.");
@@ -160,6 +199,7 @@ async function main() {
 
   console.log("Clearing existing data…");
   await prisma.$transaction([
+    prisma.webhookEvent.deleteMany(),
     prisma.orderEvent.deleteMany(),
     prisma.orderItem.deleteMany(),
     prisma.order.deleteMany(),
@@ -167,6 +207,7 @@ async function main() {
     prisma.cart.deleteMany(),
     prisma.passwordResetToken.deleteMany(),
     prisma.revokedToken.deleteMany(),
+    prisma.productVariant.deleteMany(),
     prisma.product.deleteMany(),
     prisma.category.deleteMany(),
     prisma.user.deleteMany(),
@@ -195,8 +236,12 @@ async function main() {
   }
 
   const now = Date.now();
-  const created: Product[] = [];
+  const created: (Product & { variants: ProductVariant[] })[] = [];
   for (const [i, p] of products.entries()) {
+    const variants =
+      typeof p.stock === "number"
+        ? [{ size: "FREE_SIZE" as Size, stock: p.stock }]
+        : (Object.entries(p.stock) as [Size, number][]).map(([size, stock]) => ({ size, stock }));
     created.push(
       await prisma.product.create({
         data: {
@@ -205,13 +250,15 @@ async function main() {
           description: p.description,
           pricePaise: rupees(p.price),
           compareAtPaise: p.compareAt ? rupees(p.compareAt) : null,
-          stock: p.stock,
+          stock: variants.reduce((n, v) => n + v.stock, 0),
           images: p.images.map(img),
           featured: p.featured ?? false,
           categoryId: categoryIds.get(p.category)!,
+          variants: { create: variants },
           // Stagger creation dates (interleaving categories) so "newest" sorting is meaningful.
           createdAt: new Date(now - (((i * 7) % products.length) + 1) * 36 * 60 * 60 * 1000),
         },
+        include: { variants: true },
       }),
     );
   }
@@ -219,9 +266,21 @@ async function main() {
   console.log("Creating sample orders…");
   for (const [n, [ci, daysAgo, status, paymentMethod, lines]] of sampleOrders.entries()) {
     const placedAt = new Date(now - daysAgo * 24 * 60 * 60 * 1000 - (n % 5) * 60 * 60 * 1000);
-    const items = lines.map(([pi, quantity]) => {
+    const items = lines.map(([pi, size, quantity]) => {
       const p = created[pi];
-      return { productId: p.id, name: p.name, slug: p.slug, imageUrl: p.images[0], unitPaise: p.pricePaise, quantity, lineTotalPaise: p.pricePaise * quantity };
+      const variant = p.variants.find((v) => v.size === size);
+      if (!variant) throw new Error(`Seed order ${n + 1}: ${p.name} has no size ${sizeLabel(size)}`);
+      return {
+        productId: p.id,
+        variantId: variant.id,
+        size,
+        name: p.name,
+        slug: p.slug,
+        imageUrl: p.images[0],
+        unitPaise: p.pricePaise,
+        quantity,
+        lineTotalPaise: p.pricePaise * quantity,
+      };
     });
     const subtotalPaise = items.reduce((s, i) => s + i.lineTotalPaise, 0);
     const shippingPaise = subtotalPaise >= 299_900 ? 0 : 9_900;
@@ -254,15 +313,16 @@ async function main() {
       },
     });
 
+    // Sold counts drive "popular" sorting. Stock levels above are the current shelf, after these sales.
     if (status !== "CANCELLED") {
-      for (const [pi, qty] of lines) {
+      for (const [pi, , qty] of lines) {
         await prisma.product.update({ where: { id: created[pi].id }, data: { soldCount: { increment: qty } } });
       }
     }
   }
 
   console.log(`Seeded ${categories.length} categories, ${products.length} products, ${customers.length + 1} users, ${sampleOrders.length} orders.`);
-  console.log("  Admin:    admin@aurelle.dev / Admin1234");
+  console.log("  Admin:    admin@aurelle.dev / Admin1234   (local demo only)");
   console.log("  Customer: demo@aurelle.dev  / Demo1234");
 }
 

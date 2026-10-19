@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { api, checkoutBody, createCategory, createProduct, createUser, prisma, resetDb } from "./helpers";
+import { api, checkoutBody, createCategory, createProduct, createUser, prisma, resetDb, setStock } from "./helpers";
 
-async function addToCart(auth: string, productId: string, quantity = 1) {
-  await api().post("/api/cart/items").set("Authorization", auth).send({ productId, quantity }).expect(200);
+async function addToCart(auth: string, variantId: string, quantity = 1) {
+  await api().post("/api/cart/items").set("Authorization", auth).send({ variantId, quantity }).expect(200);
 }
 
 describe("checkout & orders", () => {
@@ -35,7 +35,7 @@ describe("checkout & orders", () => {
   it("recalculates prices on the server and ignores client-sent amounts", async () => {
     const { auth } = await createUser();
     const p = await createProduct(categoryId, { pricePaise: 120_000, stock: 5 });
-    await addToCart(auth, p.id, 2);
+    await addToCart(auth, p.variantId, 2);
     // Price changes after the item was added: the order must use the current DB price.
     await prisma.product.update({ where: { id: p.id }, data: { pricePaise: 130_000 } });
 
@@ -61,11 +61,11 @@ describe("checkout & orders", () => {
   it("applies free standard shipping over the threshold and charges express", async () => {
     const { auth } = await createUser();
     const p = await createProduct(categoryId, { pricePaise: 300_000, stock: 5 });
-    await addToCart(auth, p.id);
+    await addToCart(auth, p.variantId);
     const free = await api().post("/api/orders").set("Authorization", auth).send(checkoutBody()).expect(201);
     expect(free.body.data.shippingPaise).toBe(0);
 
-    await addToCart(auth, p.id);
+    await addToCart(auth, p.variantId);
     const express = await api().post("/api/orders").set("Authorization", auth).send(checkoutBody({ shippingMethod: "EXPRESS" })).expect(201);
     expect(express.body.data.shippingPaise).toBe(24_900);
   });
@@ -73,7 +73,7 @@ describe("checkout & orders", () => {
   it("decrements stock, snapshots items and clears the cart", async () => {
     const { auth } = await createUser();
     const p = await createProduct(categoryId, { stock: 5, name: "Wool Scarf" });
-    await addToCart(auth, p.id, 3);
+    await addToCart(auth, p.variantId, 3);
     const res = await api().post("/api/orders").set("Authorization", auth).send(checkoutBody({ saveAddress: true })).expect(201);
 
     const after = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
@@ -96,12 +96,12 @@ describe("checkout & orders", () => {
     const { auth } = await createUser();
     const a = await createProduct(categoryId, { stock: 5 });
     const b = await createProduct(categoryId, { stock: 5, name: "Rare Ring" });
-    await addToCart(auth, a.id, 2);
-    await addToCart(auth, b.id, 2);
-    await prisma.product.update({ where: { id: b.id }, data: { stock: 1 } }); // someone else bought it
+    await addToCart(auth, a.variantId, 2);
+    await addToCart(auth, b.variantId, 2);
+    await setStock(b, 1); // someone else bought it
 
     const res = await api().post("/api/orders").set("Authorization", auth).send(checkoutBody()).expect(409);
-    expect(res.body.message).toBe("Only 1 of Rare Ring left in stock");
+    expect(res.body.message).toBe("Only 1 of Rare Ring (Free Size) left in stock");
     expect((await prisma.product.findUniqueOrThrow({ where: { id: a.id } })).stock).toBe(5);
     expect(await prisma.order.count()).toBe(0);
     const cart = await api().get("/api/cart").set("Authorization", auth).expect(200);
@@ -113,8 +113,8 @@ describe("checkout & orders", () => {
     const BUYERS = 8;
     const p = await createProduct(categoryId, { stock: BUYERS }); // allow everyone to add to cart
     const buyers = await Promise.all(Array.from({ length: BUYERS }, () => createUser()));
-    for (const b of buyers) await addToCart(b.auth, p.id, 1);
-    await prisma.product.update({ where: { id: p.id }, data: { stock: STOCK } });
+    for (const b of buyers) await addToCart(b.auth, p.variantId, 1);
+    await setStock(p, STOCK);
 
     const results = await Promise.all(
       buyers.map((b) => api().post("/api/orders").set("Authorization", b.auth).send(checkoutBody())),
@@ -131,7 +131,7 @@ describe("checkout & orders", () => {
   it("places only one order when the same cart is submitted twice at once", async () => {
     const { auth } = await createUser();
     const p = await createProduct(categoryId, { stock: 10 });
-    await addToCart(auth, p.id, 2);
+    await addToCart(auth, p.variantId, 2);
     const [a, b] = await Promise.all([
       api().post("/api/orders").set("Authorization", auth).send(checkoutBody()),
       api().post("/api/orders").set("Authorization", auth).send(checkoutBody()),
@@ -143,7 +143,7 @@ describe("checkout & orders", () => {
   it("handles the simulated card: approved, declined and invalid", async () => {
     const { auth } = await createUser();
     const p = await createProduct(categoryId, { stock: 5 });
-    await addToCart(auth, p.id);
+    await addToCart(auth, p.variantId);
     const card = { name: "Test Buyer", number: "4242 4242 4242 4242", expiry: "12/39", cvc: "123" };
 
     await api().post("/api/orders").set("Authorization", auth).send(checkoutBody({ paymentMethod: "CARD_SIMULATED" })).expect(400);
@@ -178,7 +178,7 @@ describe("checkout & orders", () => {
     const owner = await createUser();
     const other = await createUser();
     const p = await createProduct(categoryId, { stock: 5 });
-    await addToCart(owner.auth, p.id);
+    await addToCart(owner.auth, p.variantId);
     const order = (await api().post("/api/orders").set("Authorization", owner.auth).send(checkoutBody()).expect(201)).body.data;
 
     await api().get(`/api/orders/${order.id}`).set("Authorization", other.auth).expect(404);
@@ -194,7 +194,7 @@ describe("checkout & orders", () => {
   it("restores stock when a pending order is cancelled, and only once", async () => {
     const { auth } = await createUser();
     const p = await createProduct(categoryId, { stock: 5 });
-    await addToCart(auth, p.id, 2);
+    await addToCart(auth, p.variantId, 2);
     const order = (await api().post("/api/orders").set("Authorization", auth).send(checkoutBody()).expect(201)).body.data;
     expect((await prisma.product.findUniqueOrThrow({ where: { id: p.id } })).stock).toBe(3);
 
@@ -217,7 +217,7 @@ describe("checkout & orders", () => {
     const customer = await createUser();
     const admin = await createUser("ADMIN");
     const p = await createProduct(categoryId, { stock: 5 });
-    await addToCart(customer.auth, p.id);
+    await addToCart(customer.auth, p.variantId);
     const order = (await api().post("/api/orders").set("Authorization", customer.auth).send(checkoutBody()).expect(201)).body.data;
     const setStatus = (status: string) =>
       api().patch(`/api/admin/orders/${order.id}/status`).set("Authorization", admin.auth).send({ status });
@@ -244,7 +244,7 @@ describe("checkout & orders", () => {
     const customer = await createUser();
     const admin = await createUser("ADMIN");
     const p = await createProduct(categoryId, { stock: 4 });
-    await addToCart(customer.auth, p.id, 4);
+    await addToCart(customer.auth, p.variantId, 4);
     const card = { name: "T", number: "4242424242424242", expiry: "12/39", cvc: "123" };
     const order = (
       await api().post("/api/orders").set("Authorization", customer.auth).send(checkoutBody({ paymentMethod: "CARD_SIMULATED", card: { ...card, name: "Test" } })).expect(201)

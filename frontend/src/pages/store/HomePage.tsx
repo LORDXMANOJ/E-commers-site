@@ -6,8 +6,9 @@ import { ButtonLink } from "../../components/ui/Button";
 import { ErrorState, Skeleton } from "../../components/ui/Feedback";
 import { ProductCard, ProductCardSkeleton, ProductGrid } from "../../components/product/ProductCard";
 
-const HERO_MAIN = "https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=1600&q=80";
-const HERO_SIDE = "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?auto=format&fit=crop&w=900&q=80";
+// Pexels photos (free licence). They match products in the demo seed so the caption links somewhere real.
+const HERO_MAIN = "https://images.pexels.com/photos/37628608/pexels-photo-37628608.jpeg?auto=compress&cs=tinysrgb&w=1600";
+const HERO_SIDE = "https://images.pexels.com/photos/28943474/pexels-photo-28943474.jpeg?auto=compress&cs=tinysrgb&w=900";
 
 function Hero() {
   return (
@@ -23,20 +24,22 @@ function Hero() {
             src={sized(HERO_MAIN, 1200)}
             srcSet={srcSet(HERO_MAIN, [640, 900, 1200, 1600])}
             sizes="(min-width: 768px) 58vw, 100vw"
-            alt="A woman in a camel wrap coat walking down stone steps"
+            alt="A woman in a rani pink sequinned lehenga by a pool"
             fetchPriority="high"
             className="aspect-[4/5] w-full rounded-[var(--radius-img)] bg-surface-2 object-cover sm:aspect-[5/4] md:aspect-[4/5] lg:aspect-[6/7]"
           />
-          <figcaption className="absolute bottom-3 left-3 rounded-full bg-bg/85 px-3 py-1 text-xs backdrop-blur">
-            Camel Wrap Coat, <span className="num">₹12,990</span>
+          <figcaption className="absolute bottom-3 left-3">
+            <Link to="/product/rani-pink-sequin-lehenga" className="rounded-full bg-bg/85 px-3 py-1 text-xs backdrop-blur hover:bg-bg">
+              Rani Pink Sequin Lehenga
+            </Link>
           </figcaption>
         </figure>
 
         <div className="flex flex-col justify-between gap-8 md:col-span-5">
           <div className="max-w-md pt-2 md:pt-4">
-            <p className="display text-[clamp(2.1rem,3.6vw,3.3rem)] leading-[1.02]">Clothes cut to be kept.</p>
+            <p className="display text-[clamp(2.1rem,3.6vw,3.3rem)] leading-[1.02]">Drapes for every day and every celebration.</p>
             <p className="mt-5 text-ink-2 md:text-lg md:leading-relaxed">
-              Coats, knits and leather goods in natural fibres. Made in small runs, priced honestly, and built to be worn for years.
+              Handloom sarees, kurtas, lehengas and jewellery for women. Find your size, check what's in stock, and pay on delivery or online.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <ButtonLink to="/shop?sort=newest" size="lg">
@@ -51,7 +54,7 @@ function Hero() {
             src={sized(HERO_SIDE, 700)}
             srcSet={srcSet(HERO_SIDE, [400, 700, 900])}
             sizes="(min-width: 768px) 40vw, 100vw"
-            alt="A woman in a navy tartan overcoat on a city street"
+            alt="A woman in a saffron organza saree seated indoors"
             className="hidden aspect-[4/3] w-full rounded-[var(--radius-img)] bg-surface-2 object-cover object-[50%_30%] md:block"
           />
         </div>
@@ -138,7 +141,7 @@ function Assurances() {
   const points = [
     ["Free shipping over ₹2,999", "Standard delivery in 4–6 business days, or express in 1–2."],
     ["Pay when it arrives", "Cash on delivery across India. No card needed."],
-    ["Change your mind", "Cancel any order yourself until we confirm it."],
+    ["Find your size", "Every garment lists stock per size, with a size guide on the product page."],
   ];
   return (
     <section aria-label="Shipping and payment" className="container-page mt-20 sm:mt-28">
@@ -159,7 +162,7 @@ export default function HomePage() {
   const empty = all.data?.total === 0;
   return (
     <>
-      <title>Aurelle · Clothing & accessories</title>
+      <title>Aurelle · Sarees, kurtas & occasion wear (demo)</title>
       <Hero />
       {empty ? (
         <p className="container-page mt-16 text-center text-muted">The collection is being prepared. New pieces will appear here soon.</p>

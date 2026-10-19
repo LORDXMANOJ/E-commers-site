@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type Size } from "@prisma/client";
 
 /** Fields exposed for a product on the storefront. */
 export const productSelect = {
@@ -13,6 +13,7 @@ export const productSelect = {
   featured: true,
   createdAt: true,
   category: { select: { id: true, name: true, slug: true } },
+  variants: { select: { id: true, size: true, stock: true }, orderBy: { size: "asc" } },
 } satisfies Prisma.ProductSelect;
 
 export type ProductSort = "newest" | "price_asc" | "price_desc" | "popular";
@@ -31,6 +32,8 @@ export type ProductFilters = {
   maxPrice?: number;
   inStock?: boolean;
   featured?: boolean;
+  /** Only products with this size in stock. */
+  size?: Size;
 };
 
 export function productWhere(f: ProductFilters, extra: Prisma.ProductWhereInput = {}): Prisma.ProductWhereInput {
@@ -47,5 +50,6 @@ export function productWhere(f: ProductFilters, extra: Prisma.ProductWhereInput 
   }
   if (f.inStock) where.stock = { gt: 0 };
   if (f.featured !== undefined) where.featured = f.featured;
+  if (f.size) where.variants = { some: { size: f.size, stock: { gt: 0 } } };
   return where;
 }

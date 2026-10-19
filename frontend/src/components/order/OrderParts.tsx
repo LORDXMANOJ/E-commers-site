@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { Check, X } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { formatDateTime, formatINR, PAYMENT_LABEL, PAYMENT_STATUS_LABEL, SHIPPING_LABEL } from "../../lib/format";
+import { formatDateTime, formatINR, PAYMENT_LABEL, PAYMENT_STATUS_LABEL, SHIPPING_LABEL, sizeLabel } from "../../lib/format";
 import { sized } from "../../lib/image";
 import type { Address, Order, OrderStatus } from "../../lib/types";
 
@@ -44,6 +44,12 @@ export function OrderItems({ items }: { items: Order["items"] }) {
                 <p className="font-medium">{i.name}</p>
               )}
               <p className="num mt-0.5 text-sm text-muted">
+                {i.size && (
+                  <>
+                    <span className="text-ink-2">Size {sizeLabel(i.size)}</span>
+                    <span aria-hidden> · </span>
+                  </>
+                )}
                 {i.quantity} × {formatINR(i.unitPaise)}
               </p>
             </div>
@@ -91,7 +97,11 @@ export function OrderFacts({ order }: { order: Order }) {
       </div>
       <div>
         <dt className="text-sm text-muted">Payment status</dt>
-        <dd className="mt-1">{PAYMENT_STATUS_LABEL[order.paymentStatus]}</dd>
+        <dd className={cn("mt-1", order.paymentStatus === "PAID" && "text-success", order.paymentStatus === "UNPAID" && order.paymentMethod === "RAZORPAY" && order.status === "PENDING" && "text-sale")}>
+          {order.paymentMethod === "RAZORPAY" && order.paymentStatus === "UNPAID" && order.status === "PENDING"
+            ? "Awaiting payment"
+            : PAYMENT_STATUS_LABEL[order.paymentStatus]}
+        </dd>
       </div>
     </dl>
   );

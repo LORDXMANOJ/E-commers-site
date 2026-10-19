@@ -132,7 +132,20 @@ export default function ProductsPage() {
                       {formatINR(p.pricePaise)}
                       {p.compareAtPaise && <s className="block text-xs text-muted">{formatINR(p.compareAtPaise)}</s>}
                     </td>
-                    <td className={cn(td, "num text-right font-medium", p.stock === 0 ? "text-sale" : p.stock <= 5 && "text-warn")}>{p.stock}</td>
+                    <td className={cn(td, "num text-right")}>
+                      <span className={cn("font-medium", p.stock === 0 ? "text-sale" : p.stock <= 5 && "text-warn")}>{p.stock}</span>
+                      {p.variants.length > 1 || p.variants[0]?.size !== "FREE_SIZE" ? (
+                        <span className="block text-xs whitespace-nowrap text-muted">
+                          {p.variants.map((v) => (
+                            <span key={v.id} className={cn("ml-1.5 first:ml-0", v.stock === 0 && "text-sale")}>
+                              {v.size} {v.stock}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="block text-xs text-muted">Free Size</span>
+                      )}
+                    </td>
                     <td className={td}>
                       <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium", p.active ? "bg-success-soft text-success" : "bg-surface-2 text-muted")}>{p.active ? "Active" : "Hidden"}</span>
                       {p.featured && <span className="ml-1.5 text-xs text-muted">Featured</span>}

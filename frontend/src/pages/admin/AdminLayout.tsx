@@ -6,6 +6,7 @@ import { useTheme } from "../../providers/ThemeProvider";
 import { cn } from "../../lib/cn";
 import { Spinner } from "../../components/ui/Feedback";
 import { Wordmark } from "../../components/layout/Header";
+import { DemoNotice } from "../../components/layout/DemoNotice";
 
 const NAV = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -94,10 +95,13 @@ export default function AdminLayout() {
         </nav>
       </header>
 
-      <main id="main" className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
+      <main id="main" className="min-w-0">
+        <DemoNotice />
+        <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
         <Suspense fallback={<Spinner />}>
           <Outlet />
         </Suspense>
+        </div>
       </main>
       <ScrollRestoration />
     </div>

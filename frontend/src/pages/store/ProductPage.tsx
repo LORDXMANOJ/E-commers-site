@@ -14,6 +14,8 @@ import { QuantityStepper } from "../../components/ui/QuantityStepper";
 import { ErrorState, Skeleton } from "../../components/ui/Feedback";
 import { ProductCard, ProductGrid } from "../../components/product/ProductCard";
 import { NotFound } from "../../components/NotFound";
+import { SizeGuide, SizePicker } from "../../components/product/SizePicker";
+import { sizeLabel } from "../../lib/format";
 
 function Gallery({ product }: { product: Product }) {
   const [index, setIndex] = useState(0);
@@ -105,16 +107,31 @@ function PurchasePanel({ product }: { product: Product }) {
   const cart = useCart();
   const [qty, setQty] = useState(1);
   const [adding, setAdding] = useState(false);
-  const inBag = cart.lines.find((l) => l.productId === product.id)?.quantity ?? 0;
-  const maxAddable = Math.max(0, Math.min(product.stock - inBag, 20));
+  const inStock = product.variants.filter((v) => v.stock > 0);
+  // A single size (e.g. Free Size) is chosen for the shopper; otherwise they must pick one.
+  const [variantId, setVariantId] = useState<string | null>(
+    product.variants.length === 1 && inStock.length === 1 ? inStock[0].id : null,
+  );
+  const [needSize, setNeedSize] = useState(false);
+  const variant = product.variants.find((v) => v.id === variantId) ?? null;
+  const inBag = variant ? (cart.lines.find((l) => l.variantId === variant.id)?.quantity ?? 0) : 0;
+  const stock = variant ? variant.stock : product.stock;
+  const maxAddable = Math.max(0, Math.min(stock - inBag, 20));
   const soldOut = product.stock <= 0;
+  const onlyFreeSize = product.variants.length === 1 && product.variants[0].size === "FREE_SIZE";
 
   const add = async () => {
+    if (!variant) {
+      setNeedSize(true);
+      return;
+    }
     setAdding(true);
-    const ok = await cart.add(product, qty);
+    const ok = await cart.add(product, variant, qty);
     setAdding(false);
     if (ok) {
-      toast.success(`${product.name} added to your bag`, { action: { label: "View bag", onClick: cart.openDrawer } });
+      toast.success(`${product.name} (${sizeLabel(variant.size)}) added to your bag`, {
+        action: { label: "View bag", onClick: cart.openDrawer },
+      });
       setQty(1);
     }
   };
@@ -132,15 +149,54 @@ function PurchasePanel({ product }: { product: Product }) {
       <Price className="mt-5" size="lg" pricePaise={product.pricePaise} compareAtPaise={product.compareAtPaise} />
       <p className="mt-1 text-xs text-muted">Inclusive of all taxes</p>
 
+      {!soldOut && !onlyFreeSize && (
+        <div className="mt-7">
+          <div className="mb-3 flex items-baseline justify-between gap-4">
+            <p className="text-sm font-semibold" id="size-label">
+              Size{variant && <span className="font-normal text-muted">: {sizeLabel(variant.size)}</span>}
+            </p>
+            <SizeGuide />
+          </div>
+          <SizePicker
+            variants={product.variants}
+            value={variantId}
+            invalid={needSize && !variant}
+            onChange={(id) => {
+              setVariantId(id);
+              setNeedSize(false);
+              setQty(1);
+            }}
+          />
+          {needSize && !variant && (
+            <p role="alert" className="mt-2 text-sm text-sale">
+              Choose a size to add this to your bag.
+            </p>
+          )}
+        </div>
+      )}
+      {onlyFreeSize && <p className="mt-6 text-sm text-ink-2">Free Size</p>}
+
       <div className="mt-6 text-sm">
-        <StockStatus stock={product.stock} />
+        {variant || soldOut ? (
+          <StockStatus stock={stock} />
+        ) : (
+          // Before a size is chosen, a low total would be misleading, so only say how many sizes are available.
+          <p className="text-ink-2">
+            Available in {inStock.length} of {product.variants.length} sizes
+          </p>
+        )}
       </div>
 
       {!soldOut && (
         <div className="mt-6 flex gap-3">
-          <QuantityStepper value={Math.min(qty, Math.max(maxAddable, 1))} max={Math.max(maxAddable, 1)} onChange={setQty} disabled={maxAddable === 0} />
-          <Button size="lg" className="flex-1" onClick={add} loading={adding} disabled={maxAddable === 0}>
-            {maxAddable === 0 ? "All available stock is in your bag" : "Add to bag"}
+          <QuantityStepper
+            value={Math.min(qty, Math.max(maxAddable, 1))}
+            max={Math.max(maxAddable, 1)}
+            onChange={setQty}
+            disabled={!variant || maxAddable === 0}
+          />
+          <Button size="lg" className="flex-1" onClick={add} loading={adding} disabled={!!variant && maxAddable === 0}>
+            {!variant ? "Select a size" : maxAddable === 0 ? "All available stock is in your bag" : "Add to bag"}
           </Button>
         </div>
       )}

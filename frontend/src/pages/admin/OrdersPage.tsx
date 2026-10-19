@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ReceiptText, Search } from "lucide-react";
 import { get } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import { formatDateTime, formatINR, PAYMENT_LABEL, plural, STATUS_LABEL } from "../../lib/format";
+import { formatDateTime, formatINR, PAYMENT_LABEL, PAYMENT_STATUS_LABEL, plural, STATUS_LABEL } from "../../lib/format";
 import type { AdminOrderRow, OrderStatus, Paginated } from "../../lib/types";
 import { useDebounced } from "../../hooks/useDebounced";
 import { EmptyState, ErrorState, Skeleton } from "../../components/ui/Feedback";
@@ -106,7 +106,7 @@ export default function OrdersPage() {
                     <td className={`${td} num text-muted`}>{formatDateTime(o.createdAt)}</td>
                     <td className={`${td} text-ink-2`}>
                       {PAYMENT_LABEL[o.paymentMethod]}
-                      <p className="text-xs text-muted">{o.paymentStatus.charAt(0) + o.paymentStatus.slice(1).toLowerCase()}</p>
+                      <p className="text-xs text-muted">{PAYMENT_STATUS_LABEL[o.paymentStatus]}</p>
                     </td>
                     <td className={td}>
                       <StatusBadge status={o.status} />

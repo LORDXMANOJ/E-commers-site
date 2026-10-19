@@ -30,3 +30,10 @@ test-results/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Local tooling output (browser automation, recordings)
+.playwright-mcp/
+*.webm
+
+# Private hosting notes kept on this machine only
+HOSTING.md

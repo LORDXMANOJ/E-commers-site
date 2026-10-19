@@ -4,16 +4,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Banknote, CreditCard, Lock, ShoppingBag } from "lucide-react";
+import { Banknote, CreditCard, Lock, ShoppingBag, Smartphone } from "lucide-react";
 import { useCart } from "../../providers/CartProvider";
 import { useAuth } from "../../providers/AuthProvider";
-import { estimateShipping, useShippingOptions } from "../../hooks/queries";
+import { estimateShipping, useShippingOptions, useStoreConfig } from "../../hooks/queries";
 import { ApiError, post } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import { formatINR, PAYMENT_LABEL, SHIPPING_LABEL } from "../../lib/format";
+import { formatINR, PAYMENT_LABEL, SHIPPING_LABEL, sizeLabel } from "../../lib/format";
+import { payWithRazorpay } from "../../lib/razorpay";
 import { sized } from "../../lib/image";
 import { addressSchema, cardSchema, type AddressForm, type CardForm } from "../../lib/schemas";
-import type { Order, PaymentMethod, ShippingMethod } from "../../lib/types";
+import type { PaymentMethod, PlacedOrder, ShippingMethod } from "../../lib/types";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Field";
 import { EmptyState, Spinner } from "../../components/ui/Feedback";
@@ -57,12 +58,15 @@ function SummaryCard({ shippingPaise }: { shippingPaise: number }) {
       </h2>
       <ul className="mb-6 space-y-4">
         {cart.lines.map((l) => (
-          <li key={l.productId} className="flex items-center gap-3">
+          <li key={l.variantId} className="flex items-center gap-3">
             <div className="relative shrink-0">
               <img src={l.product.images[0] ? sized(l.product.images[0], 160) : undefined} alt="" className="aspect-[4/5] w-14 rounded-[var(--radius-img)] bg-surface-2 object-cover" />
               <span className="num absolute -top-2 -right-2 grid size-5 place-items-center rounded-full bg-ink text-[11px] font-semibold text-bg">{l.quantity}</span>
             </div>
-            <p className="min-w-0 flex-1 truncate text-sm">{l.product.name}</p>
+            <p className="min-w-0 flex-1 text-sm">
+              <span className="block truncate">{l.product.name}</span>
+              <span className="text-xs text-muted">Size {sizeLabel(l.size)}</span>
+            </p>
             <p className="num text-sm">{formatINR(l.lineTotalPaise)}</p>
           </li>
         ))}
@@ -78,6 +82,9 @@ export default function CheckoutPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const shippingOpts = useShippingOptions();
+  const { config } = useStoreConfig();
+  const razorpay = config.payments.razorpay;
+  const testMode = config.payments.mode !== "live";
 
   const [step, setStep] = useState<Step>(0);
   const [address, setAddress] = useState<AddressForm | null>(null);
@@ -108,18 +115,42 @@ export default function CheckoutPage() {
     if (!address) return setStep(0);
     setPlacing(true);
     try {
-      const order = await post<Order>("/orders", {
+      const order = await post<PlacedOrder>("/orders", {
         shippingAddress: address,
         shippingMethod: method,
         paymentMethod: payment,
         card: payment === "CARD_SIMULATED" ? card : undefined,
         saveAddress,
       });
-      qc.setQueryData(["cart"], { items: [], itemCount: 0, subtotalPaise: 0 });
+      const emptyBag = () => qc.setQueryData(["cart"], { items: [], itemCount: 0, subtotalPaise: 0 });
+      // For online payment the bag summary stays visible behind Razorpay; it is emptied once the shopper is done.
+      if (!order.payment) emptyBag();
       qc.setQueryData(["orders", order.id], order);
       void qc.invalidateQueries({ queryKey: ["products"] });
       void qc.invalidateQueries({ queryKey: ["orders"] });
       if (saveAddress) void qc.invalidateQueries({ queryKey: ["me"] });
+
+      if (order.payment) {
+        // The order now holds the stock. Open Razorpay; the server verifies the payment before marking it paid.
+        try {
+          const contact = `+91${address.phone.replace(/\D/g, "").slice(-10)}`;
+          const result = await payWithRazorpay(order.payment, { name: address.fullName, email: user?.email, contact }).finally(emptyBag);
+          if (result.status === "paid") {
+            qc.setQueryData(["orders", order.id], result.order);
+            navigate(`/checkout/success/${order.id}`, { replace: true });
+          } else {
+            toast.info(result.lastError ? `Payment not completed: ${result.lastError}` : "Payment not completed.", {
+              description: "Your items are held for a short while. You can pay or cancel from this order.",
+            });
+            navigate(`/account/orders/${order.id}`, { replace: true });
+          }
+        } catch (err) {
+          emptyBag();
+          toast.error((err as Error).message);
+          navigate(`/account/orders/${order.id}`, { replace: true });
+        }
+        return;
+      }
       navigate(`/checkout/success/${order.id}`, { replace: true });
     } catch (e) {
       setPlacing(false);
@@ -200,15 +231,42 @@ export default function CheckoutPage() {
                     <span className="text-sm text-muted">Pay in cash or UPI when your order arrives.</span>
                   </span>
                 </label>
-                <label className={radioCard(payment === "CARD_SIMULATED")}>
-                  <input type="radio" name="payment" checked={payment === "CARD_SIMULATED"} onChange={() => setPayment("CARD_SIMULATED")} className="mt-1 size-4 accent-[var(--accent)]" />
-                  <CreditCard className="mt-0.5 size-5 text-muted" aria-hidden />
-                  <span className="flex-1">
-                    <span className="block font-medium">Card (simulated)</span>
-                    <span className="text-sm text-muted">A demo of card checkout. No real payment is taken.</span>
-                  </span>
-                </label>
+                {razorpay && (
+                  <label className={radioCard(payment === "RAZORPAY")}>
+                    <input type="radio" name="payment" checked={payment === "RAZORPAY"} onChange={() => setPayment("RAZORPAY")} className="mt-1 size-4 accent-[var(--accent)]" />
+                    <Smartphone className="mt-0.5 size-5 text-muted" aria-hidden />
+                    <span className="flex-1">
+                      <span className="flex flex-wrap items-center gap-2 font-medium">
+                        UPI, cards and netbanking
+                        {testMode && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold tracking-wide text-ink uppercase">Test mode</span>}
+                      </span>
+                      <span className="text-sm text-muted">Secure checkout by Razorpay.</span>
+                    </span>
+                  </label>
+                )}
+                {config.payments.simulatedCard && (
+                  <label className={radioCard(payment === "CARD_SIMULATED")}>
+                    <input type="radio" name="payment" checked={payment === "CARD_SIMULATED"} onChange={() => setPayment("CARD_SIMULATED")} className="mt-1 size-4 accent-[var(--accent)]" />
+                    <CreditCard className="mt-0.5 size-5 text-muted" aria-hidden />
+                    <span className="flex-1">
+                      <span className="block font-medium">Card (simulated)</span>
+                      <span className="text-sm text-muted">A demo of card checkout. No real payment is taken.</span>
+                    </span>
+                  </label>
+                )}
               </fieldset>
+
+              {payment === "RAZORPAY" && testMode && (
+                <div className="mt-6 rounded-[var(--radius-ctl)] border border-warn/30 bg-warn-soft p-4 text-sm text-ink">
+                  <p className="font-semibold">Razorpay test mode: no real money moves</p>
+                  <p className="mt-1 text-ink-2">
+                    After you place the order, Razorpay opens. Choose <span className="font-medium">Netbanking</span>, pick any bank and
+                    press <span className="font-medium">Success</span> or <span className="font-medium">Failure</span> on the demo bank page.
+                    Or use test card <span className="num font-medium">4100 2800 0000 1007</span> with any future expiry and any CVV,
+                    then press Success on the demo bank page. Never enter a real card, UPI PIN or bank password on this demo.
+                  </p>
+                </div>
+              )}
 
               {payment === "CARD_SIMULATED" ? (
                 <form
@@ -275,7 +333,7 @@ export default function CheckoutPage() {
                 </p>
               )}
               <Button size="lg" className="mt-8 w-full" onClick={placeOrder} loading={placing} disabled={blocked}>
-                <Lock className="size-4" aria-hidden /> Place order · <span className="num">{formatINR(cart.subtotalPaise + shippingPaise)}</span>
+                <Lock className="size-4" aria-hidden /> {payment === "RAZORPAY" ? "Place order and pay" : "Place order"} · <span className="num">{formatINR(cart.subtotalPaise + shippingPaise)}</span>
               </Button>
               <p className="mt-3 text-center text-xs text-muted">Prices and stock are confirmed by our server when you place the order.</p>
             </div>

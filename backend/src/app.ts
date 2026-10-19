@@ -1,7 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import { env } from "./config/env";
+import { cloudinaryEnabled, env, razorpayMode, razorpayWebhookEnabled } from "./config/env";
 import { prisma } from "./lib/prisma";
 import { ok } from "./lib/http";
 import { apiLimiter } from "./middleware/rateLimit";
@@ -12,6 +12,7 @@ import { catalogRouter } from "./modules/catalog/catalog.routes";
 import { cartRouter } from "./modules/cart/cart.routes";
 import { ordersRouter } from "./modules/orders/orders.routes";
 import { adminRouter } from "./modules/admin/admin.routes";
+import { webhookRouter } from "./modules/payments/webhook.routes";
 
 export function createApp() {
   const app = express();
@@ -31,6 +32,8 @@ export function createApp() {
       maxAge: 600,
     }),
   );
+  // Webhooks need the raw body for signature checks, so they are mounted before the JSON parser.
+  app.use("/api/webhooks", webhookRouter);
   app.use(express.json({ limit: "100kb" }));
 
   app.get("/api/health", async (_req, res) => {
@@ -40,8 +43,21 @@ export function createApp() {
     } catch {
       db = "down";
     }
-    res.status(db === "up" ? 200 : 503).json({ success: db === "up", data: { status: "ok", db } });
+    res.status(db === "up" ? 200 : 503).json({
+      success: db === "up",
+      data: { status: "ok", db, payments: razorpayMode, webhooks: razorpayWebhookEnabled, uploads: cloudinaryEnabled },
+    });
   });
+
+  /** Public feature flags for the storefront. Never includes secrets. */
+  app.get("/api/config", (_req, res) =>
+    ok(res, {
+      demo: true,
+      // The simulated card is only offered when Razorpay is not configured, so the two are never confused.
+      payments: { razorpay: razorpayMode !== "off", mode: razorpayMode, simulatedCard: razorpayMode === "off", cod: true },
+      uploads: { enabled: cloudinaryEnabled },
+    }),
+  );
 
   app.use("/api", apiLimiter);
   app.use("/api/auth", authRouter);

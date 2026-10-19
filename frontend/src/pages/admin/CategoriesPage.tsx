@@ -48,7 +48,7 @@ function CategoryForm({ initial, onDone }: { initial?: Category; onDone: () => v
       <h2 className="text-lg font-semibold">{initial ? `Edit ${initial.name}` : "New category"}</h2>
       <Input label="Name" placeholder="e.g. Knitwear" {...register("name")} error={formState.errors.name?.message} />
       <Textarea label="Description" optional rows={3} placeholder="e.g. Merino, cashmere and cotton knits for every season." {...register("description")} error={formState.errors.description?.message} />
-      <Input label="Image URL" optional placeholder="https://images.unsplash.com/…" {...register("imageUrl")} error={formState.errors.imageUrl?.message} />
+      <Input label="Image URL" optional placeholder="https://images.pexels.com/photos/…" {...register("imageUrl")} error={formState.errors.imageUrl?.message} />
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="secondary" onClick={onDone}>
           Cancel

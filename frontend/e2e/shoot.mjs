@@ -11,7 +11,7 @@ const SIZES = (process.env.SIZES ?? "390x844,820x1180,1440x900").split(",").map(
 const FULL = process.env.FULL !== "0";
 fs.mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || undefined });
 for (const [w, h] of SIZES) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, colorScheme: THEME });
   await ctx.addInitScript((t) => localStorage.setItem("aurelle.theme", t), THEME);

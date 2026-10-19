@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { ApiError, get, post } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
-import type { Order } from "../../lib/types";
+import { payWithRazorpay } from "../../lib/razorpay";
+import type { Order, PaymentSession } from "../../lib/types";
+import { useAuth } from "../../providers/AuthProvider";
 import { Button } from "../../components/ui/Button";
 import { ErrorState, Skeleton } from "../../components/ui/Feedback";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -16,6 +18,7 @@ export default function OrderDetailPage() {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const { user } = useAuth();
   const { data: order, isPending, isError, error, refetch } = useQuery({
     queryKey: ["orders", id],
     queryFn: () => get<Order>(`/orders/${id}`),
@@ -29,6 +32,30 @@ export default function OrderDetailPage() {
       void qc.invalidateQueries({ queryKey: ["orders", "mine"] });
       void qc.invalidateQueries({ queryKey: ["products"] });
       toast.success(`Order ${o.orderNumber} cancelled`);
+    },
+    onError: (e) => {
+      toast.error((e as Error).message);
+      void refetch();
+    },
+  });
+
+  const pay = useMutation({
+    mutationFn: async () => {
+      const session = await post<PaymentSession>(`/orders/${id}/pay`);
+      return payWithRazorpay(session, {
+        name: order?.shippingAddress.fullName,
+        email: user?.email,
+        contact: order ? `+91${order.shippingAddress.phone.replace(/\D/g, "").slice(-10)}` : undefined,
+      });
+    },
+    onSuccess: (r) => {
+      if (r.status === "paid") {
+        qc.setQueryData(["orders", id], r.order);
+        void qc.invalidateQueries({ queryKey: ["orders", "mine"] });
+        toast.success("Payment received. Thank you!");
+      } else if (r.lastError) {
+        toast.error(`Payment not completed: ${r.lastError}`);
+      }
     },
     onError: (e) => {
       toast.error((e as Error).message);
@@ -61,7 +88,10 @@ export default function OrderDetailPage() {
             onClick={async () => {
               const ok = await confirm({
                 title: "Cancel this order?",
-                body: "The items go back into stock and you won't be charged. This can't be undone.",
+                body:
+                  order.paymentStatus === "PAID"
+                    ? "The items go back into stock and your payment is refunded to the original method. This can't be undone."
+                    : "The items go back into stock and you won't be charged. This can't be undone.",
                 confirmLabel: "Cancel order",
                 tone: "danger",
               });
@@ -72,6 +102,21 @@ export default function OrderDetailPage() {
           </Button>
         )}
       </div>
+
+      {awaitingPayment(order) && (
+        <div role="status" className="mt-6 flex flex-col gap-4 rounded-[var(--radius-card)] border border-warn/30 bg-warn-soft p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm">
+            <p className="font-semibold text-ink">Payment pending</p>
+            <p className="mt-1 text-ink-2">
+              Your items are held until <span className="num">{formatDateTime(order.paymentExpiresAt!)}</span>. After that the order
+              is cancelled automatically. Razorpay is in test mode on this demo, so no real money moves.
+            </p>
+          </div>
+          <Button onClick={() => pay.mutate()} loading={pay.isPending} className="shrink-0">
+            Pay now
+          </Button>
+        </div>
+      )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-8 rounded-[var(--radius-card)] border border-line bg-surface p-5 sm:p-7">
@@ -95,5 +140,15 @@ export default function OrderDetailPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function awaitingPayment(o: Order) {
+  return (
+    o.paymentMethod === "RAZORPAY" &&
+    o.paymentStatus === "UNPAID" &&
+    o.status === "PENDING" &&
+    !!o.paymentExpiresAt &&
+    new Date(o.paymentExpiresAt) > new Date()
   );
 }

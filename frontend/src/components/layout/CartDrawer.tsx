@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router";
 import { ShoppingBag, X } from "lucide-react";
 import { useCart } from "../../providers/CartProvider";
 import { useShippingOptions } from "../../hooks/queries";
-import { formatINR } from "../../lib/format";
+import { formatINR, sizeLabel } from "../../lib/format";
 import { sized } from "../../lib/image";
 import { cn } from "../../lib/cn";
 import type { CartLine } from "../../lib/types";
@@ -35,7 +35,7 @@ export function FreeShippingMeter({ subtotalPaise }: { subtotalPaise: number }) 
 
 export function CartLineRow({ line, compact, onNavigate }: { line: CartLine; compact?: boolean; onNavigate?: () => void }) {
   const { setQuantity, remove, pendingIds } = useCart();
-  const busy = pendingIds.has(line.productId);
+  const busy = pendingIds.has(line.variantId);
   const { product } = line;
   const short = product.stock < line.quantity;
   return (
@@ -55,7 +55,11 @@ export function CartLineRow({ line, compact, onNavigate }: { line: CartLine; com
           </Link>
           <p className="num shrink-0 font-medium">{formatINR(line.lineTotalPaise)}</p>
         </div>
-        <p className="num mt-0.5 text-sm text-muted">{formatINR(product.pricePaise)} each</p>
+        <p className="num mt-0.5 text-sm text-muted">
+          <span className="text-ink-2">Size {sizeLabel(line.size)}</span>
+          <span aria-hidden> · </span>
+          {formatINR(product.pricePaise)} each
+        </p>
         {!line.available && (
           <p className="mt-1 text-xs font-medium text-sale">
             {product.stock <= 0 ? "Sold out. Remove it to check out." : short ? `Only ${product.stock} left. Lower the quantity.` : "No longer available"}
@@ -66,11 +70,11 @@ export function CartLineRow({ line, compact, onNavigate }: { line: CartLine; com
             size="sm"
             value={line.quantity}
             max={Math.max(line.quantity > product.stock ? line.quantity : product.stock, 1)}
-            onChange={(q) => (q < 1 ? remove(line.productId) : setQuantity(line.productId, Math.min(q, 20)))}
+            onChange={(q) => (q < 1 ? remove(line.variantId) : setQuantity(line.variantId, Math.min(q, 20)))}
             disabled={busy}
-            label={`Quantity of ${product.name}`}
+            label={`Quantity of ${product.name}, size ${sizeLabel(line.size)}`}
           />
-          <button type="button" onClick={() => remove(line.productId)} disabled={busy} className="inline-flex items-center gap-1 rounded px-1 text-sm text-muted hover:text-ink">
+          <button type="button" onClick={() => remove(line.variantId)} disabled={busy} className="inline-flex items-center gap-1 rounded px-1 text-sm text-muted hover:text-ink">
             <X className="size-3.5" aria-hidden /> Remove
           </button>
         </div>
@@ -133,7 +137,7 @@ export function CartDrawer() {
       ) : (
         <ul className="space-y-6 p-5">
           {cart.lines.map((l) => (
-            <CartLineRow key={l.productId} line={l} compact onNavigate={cart.closeDrawer} />
+            <CartLineRow key={l.variantId} line={l} compact onNavigate={cart.closeDrawer} />
           ))}
         </ul>
       )}

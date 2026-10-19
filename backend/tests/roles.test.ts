@@ -51,7 +51,10 @@ describe("role-based access", () => {
       pricePaise: 459_000,
       compareAtPaise: 399_000,
       categoryId: cat.body.data.id,
-      stock: 7,
+      variants: [
+        { size: "S", stock: 3 },
+        { size: "M", stock: 4 },
+      ],
       images: ["https://images.unsplash.com/photo-1434389677669-e08b4cac3105"],
     };
     // compare-at must be higher than price
@@ -61,16 +64,17 @@ describe("role-based access", () => {
       .set("Authorization", auth)
       .send({ ...body, compareAtPaise: 520_000 })
       .expect(201);
-    expect(created.body.data).toMatchObject({ slug: "merino-rollneck", pricePaise: 459_000, active: true });
+    expect(created.body.data).toMatchObject({ slug: "merino-rollneck", pricePaise: 459_000, active: true, stock: 7 });
 
     await api().post("/api/admin/products").set("Authorization", auth).send({ ...body, compareAtPaise: null }).expect(409); // same slug
 
     const updated = await api()
       .patch(`/api/admin/products/${created.body.data.id}`)
       .set("Authorization", auth)
-      .send({ stock: 2, active: false })
+      .send({ variants: [{ size: "M", stock: 2 }], active: false })
       .expect(200);
     expect(updated.body.data).toMatchObject({ stock: 2, active: false });
+    expect(updated.body.data.variants.map((v: { size: string }) => v.size)).toEqual(["M"]);
 
     // Category with products cannot be deleted
     await api().delete(`/api/admin/categories/${cat.body.data.id}`).set("Authorization", auth).expect(409);

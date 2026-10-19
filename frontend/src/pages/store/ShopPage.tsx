@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router";
 import { SearchX, SlidersHorizontal, X } from "lucide-react";
 import { useCategories, useProducts, type ProductQuery } from "../../hooks/queries";
 import { cn } from "../../lib/cn";
-import { formatINR, plural } from "../../lib/format";
+import { formatINR, plural, SIZES, sizeLabel } from "../../lib/format";
+import type { Size } from "../../lib/types";
 import { ProductCard, ProductCardSkeleton, ProductGrid } from "../../components/product/ProductCard";
 import { EmptyState, ErrorState } from "../../components/ui/Feedback";
 import { Pagination } from "../../components/ui/Pagination";
@@ -38,10 +39,11 @@ function useFilters() {
     min: intParam(params.get("min")),
     max: intParam(params.get("max")),
     inStock: params.get("inStock") === "1",
+    size: (SIZES as string[]).includes(params.get("size") ?? "") ? (params.get("size") as Size) : undefined,
     sort: (SORTS.some((s) => s.value === sortParam) ? sortParam : "newest") as NonNullable<ProductQuery["sort"]>,
     page: Math.max(1, intParam(params.get("page")) ?? 1),
   };
-  const update = (patch: Partial<Record<"q" | "category" | "min" | "max" | "inStock" | "sort" | "page", string | number | boolean | undefined>>) => {
+  const update = (patch: Partial<Record<"q" | "category" | "min" | "max" | "inStock" | "size" | "sort" | "page", string | number | boolean | undefined>>) => {
     setParams(
       () => {
         // Read the live URL: the updater's `prev` can be one render stale when filters change quickly.
@@ -150,6 +152,27 @@ function FilterPanel({ f, update }: { f: FilterApi["filters"]; update: FilterApi
         <PriceRange min={f.min} max={f.max} onApply={(min, max) => update({ min, max })} />
       </fieldset>
 
+      <fieldset>
+        <legend className="mb-3 text-sm font-semibold">Size</legend>
+        <div className="flex flex-wrap gap-2">
+          {SIZES.map((s) => {
+            const active = f.size === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={active}
+                onClick={() => update({ size: active ? undefined : s })}
+                className={cn("min-w-11 rounded-full border px-3 py-1.5 text-sm transition-colors", active ? "border-ink bg-ink text-bg" : "border-line-strong hover:border-ink")}
+              >
+                {sizeLabel(s)}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-muted">Shows items with that size in stock.</p>
+      </fieldset>
+
       <label className="flex cursor-pointer items-center justify-between gap-3">
         <span className="text-sm font-semibold">In stock only</span>
         <input type="checkbox" checked={f.inStock} onChange={(e) => update({ inStock: e.target.checked })} className="size-5 accent-[var(--accent)]" />
@@ -168,6 +191,7 @@ export default function ShopPage() {
     minPrice: f.min !== undefined ? f.min * 100 : undefined,
     maxPrice: f.max !== undefined ? f.max * 100 : undefined,
     inStock: f.inStock || undefined,
+    size: f.size,
     sort: f.sort,
     page: f.page,
     limit: PAGE_SIZE,
@@ -186,6 +210,7 @@ export default function ShopPage() {
       clear: () => update({ min: undefined, max: undefined }),
     });
   if (f.inStock) chips.push({ label: "In stock", clear: () => update({ inStock: undefined }) });
+  if (f.size) chips.push({ label: `Size ${sizeLabel(f.size)}`, clear: () => update({ size: undefined }) });
 
   const goToPage = (page: number) => {
     update({ page: page > 1 ? page : undefined });

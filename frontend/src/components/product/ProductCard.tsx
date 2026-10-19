@@ -58,10 +58,23 @@ export function ProductCard({ product, priority, sizes = "(min-width: 1024px) 25
           <h3 className="text-[0.95rem] leading-snug font-medium text-ink">{product.name}</h3>
           <p className="text-xs text-muted">{product.category.name}</p>
           <Price pricePaise={product.pricePaise} compareAtPaise={product.compareAtPaise} size="sm" className="mt-1" />
+          {!soldOut && <SizeNote product={product} />}
           {!soldOut && <StockNote stock={product.stock} />}
         </div>
       </Link>
     </article>
+  );
+}
+
+/** In-stock sizes, e.g. "S · M · L". Nothing for Free Size items. */
+function SizeNote({ product }: { product: Product }) {
+  const sizes = product.variants?.filter((v) => v.stock > 0 && v.size !== "FREE_SIZE") ?? [];
+  if (!sizes.length) return null;
+  return (
+    <p className="text-xs text-ink-2">
+      <span className="sr-only">Sizes in stock: </span>
+      {sizes.map((v) => v.size).join(" · ")}
+    </p>
   );
 }
 

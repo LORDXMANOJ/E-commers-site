@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { del, errorMessage, get, patch, post } from "../lib/api";
 import { guestCart } from "../lib/guestCart";
-import type { Cart, CartLine, CartProduct } from "../lib/types";
+import { sizeLabel } from "../lib/format";
+import type { Cart, CartLine, Product, Variant } from "../lib/types";
 import { useAuth } from "./AuthProvider";
 
 type CartContextValue = {
@@ -14,9 +15,10 @@ type CartContextValue = {
   isError: boolean;
   isGuest: boolean;
   refetch: () => void;
-  add: (product: CartProduct, quantity?: number) => Promise<boolean>;
-  setQuantity: (productId: string, quantity: number) => Promise<void>;
-  remove: (productId: string) => Promise<void>;
+  add: (product: Product, variant: Variant, quantity?: number) => Promise<boolean>;
+  setQuantity: (variantId: string, quantity: number) => Promise<void>;
+  remove: (variantId: string) => Promise<void>;
+  /** Variant ids with a request in flight. */
   pendingIds: Set<string>;
   drawerOpen: boolean;
   openDrawer: () => void;
@@ -60,19 +62,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
   });
 
   const add = useCallback(
-    async (product: CartProduct, quantity = 1) => {
+    async (product: Product, variant: Variant, quantity = 1) => {
       if (!authed) {
-        const inBag = guestCart.snapshot().find((l) => l.productId === product.id)?.quantity ?? 0;
-        if (inBag + quantity > product.stock) {
-          toast.error(product.stock > 0 ? `Only ${product.stock} of ${product.name} available` : `${product.name} is sold out`);
+        const inBag = guestCart.snapshot().find((l) => l.variantId === variant.id)?.quantity ?? 0;
+        const label = `${product.name} (${sizeLabel(variant.size)})`;
+        if (inBag + quantity > variant.stock) {
+          toast.error(variant.stock > 0 ? `Only ${variant.stock} of ${label} available` : `${label} is sold out`);
           return false;
         }
-        guestCart.add(product, quantity);
+        const { id, name, slug, pricePaise, compareAtPaise, images } = product;
+        guestCart.add(
+          { id, name, slug, pricePaise, compareAtPaise, images, stock: variant.stock },
+          variant.id,
+          variant.size,
+          quantity,
+        );
         return true;
       }
       try {
-        await track(product.id, () =>
-          mutate.mutateAsync(() => post<Cart>("/cart/items", { productId: product.id, quantity })),
+        await track(variant.id, () =>
+          mutate.mutateAsync(() => post<Cart>("/cart/items", { variantId: variant.id, quantity })),
         );
         return true;
       } catch (e) {
@@ -84,10 +93,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 
   const setQuantity = useCallback(
-    async (productId: string, quantity: number) => {
-      if (!authed) return guestCart.setQuantity(productId, quantity);
+    async (variantId: string, quantity: number) => {
+      if (!authed) return guestCart.setQuantity(variantId, quantity);
       try {
-        await track(productId, () => mutate.mutateAsync(() => patch<Cart>(`/cart/items/${productId}`, { quantity })));
+        await track(variantId, () => mutate.mutateAsync(() => patch<Cart>(`/cart/items/${variantId}`, { quantity })));
       } catch (e) {
         toast.error(errorMessage(e));
       }
@@ -96,10 +105,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 
   const remove = useCallback(
-    async (productId: string) => {
-      if (!authed) return guestCart.remove(productId);
+    async (variantId: string) => {
+      if (!authed) return guestCart.remove(variantId);
       try {
-        await track(productId, () => mutate.mutateAsync(() => del<Cart>(`/cart/items/${productId}`)));
+        await track(variantId, () => mutate.mutateAsync(() => del<Cart>(`/cart/items/${variantId}`)));
       } catch (e) {
         toast.error(errorMessage(e));
       }
@@ -111,7 +120,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const lines: CartLine[] = authed
       ? (server.data?.items ?? [])
       : guestLines.map((l) => ({
-          productId: l.productId,
+          productId: l.product.id,
+          variantId: l.variantId,
+          size: l.size,
           quantity: l.quantity,
           product: l.product,
           available: l.product.stock >= l.quantity,

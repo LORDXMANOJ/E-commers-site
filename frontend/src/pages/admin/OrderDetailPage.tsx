@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
-import { get, patch } from "../../lib/api";
+import { get, patch, post } from "../../lib/api";
 import { formatDateTime, NEXT_STATUSES, STATUS_LABEL } from "../../lib/format";
 import type { Order, OrderStatus } from "../../lib/types";
 import { Button } from "../../components/ui/Button";
@@ -45,10 +45,22 @@ export default function AdminOrderDetailPage() {
     },
   });
 
+  const retryRefund = useMutation({
+    mutationFn: () => post<Order>(`/admin/orders/${id}/refund`),
+    onSuccess: (o) => {
+      qc.setQueryData(["admin", "order", id], { ...order, ...o });
+      if (o.razorpayRefundId) toast.success("Refund requested from Razorpay");
+      else toast.error("Razorpay still refused the refund. Refund it from the Razorpay Dashboard.");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />;
   if (isPending) return <Spinner />;
 
-  const next = NEXT_STATUSES[order.status];
+  // An online order cannot be confirmed until Razorpay payment is verified (the server enforces this too).
+  const awaitingPayment = order.paymentMethod === "RAZORPAY" && order.paymentStatus !== "PAID";
+  const next = NEXT_STATUSES[order.status].filter((s) => !(s === "CONFIRMED" && awaitingPayment));
 
   return (
     <>
@@ -77,6 +89,29 @@ export default function AdminOrderDetailPage() {
             </div>
             <OrderFacts order={order} />
           </section>
+          {order.paymentMethod === "RAZORPAY" && (
+            <section className={`${panel} p-5`} aria-labelledby="rzp-title">
+              <h2 id="rzp-title" className="font-medium">Razorpay</h2>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+                {[
+                  ["Order id", order.razorpayOrderId],
+                  ["Payment id", order.razorpayPaymentId],
+                  ["Refund id", order.razorpayRefundId],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-muted">{label}</dt>
+                    <dd className="num mt-0.5 break-all">{value ?? "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-3 text-xs text-muted">Look these up in the Razorpay Dashboard (test mode) to see the payment and any refund.</p>
+              {order.status === "CANCELLED" && order.paymentStatus === "REFUND_PENDING" && !order.razorpayRefundId && (
+                <Button className="mt-4" variant="secondary" loading={retryRefund.isPending} onClick={() => retryRefund.mutate()}>
+                  Retry refund
+                </Button>
+              )}
+            </section>
+          )}
         </div>
 
         <div className="space-y-5">
@@ -104,7 +139,7 @@ export default function AdminOrderDetailPage() {
                           s === "CANCELLED" &&
                           !(await confirm({
                             title: `Cancel ${order.orderNumber}?`,
-                            body: `Stock is restored${order.paymentStatus === "PAID" ? " and the simulated card payment is marked refunded" : ""}. This can't be undone.`,
+                            body: `Stock is restored${order.paymentStatus === "PAID" ? (order.paymentMethod === "RAZORPAY" ? " and a full refund is requested from Razorpay" : " and the simulated card payment is marked refunded") : ""}. This can't be undone.`,
                             confirmLabel: "Cancel order",
                             tone: "danger",
                           }))

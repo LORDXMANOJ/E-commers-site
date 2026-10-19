@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { get } from "../lib/api";
-import type { Category, Paginated, Product, ShippingOptions } from "../lib/types";
+import type { Category, Paginated, Product, ShippingOptions, Size, StoreConfig } from "../lib/types";
 
 export type ProductQuery = {
   q?: string;
@@ -9,6 +9,7 @@ export type ProductQuery = {
   maxPrice?: number;
   inStock?: boolean;
   featured?: boolean;
+  size?: Size;
   sort?: "newest" | "price_asc" | "price_desc" | "popular";
   page?: number;
   limit?: number;
@@ -49,4 +50,17 @@ export function estimateShipping(opts: ShippingOptions, method: "STANDARD" | "EX
   const m = opts.methods.find((x) => x.id === method)!;
   if (method === "STANDARD" && subtotalPaise >= opts.freeShippingThresholdPaise) return 0;
   return m.pricePaise;
+}
+
+/** Public feature flags (Razorpay on/off and its mode, uploads). Falls back to the safest options. */
+export function useStoreConfig() {
+  const q = useQuery({ queryKey: ["config"], queryFn: () => get<StoreConfig>("/config"), staleTime: 10 * 60_000 });
+  return {
+    isPending: q.isPending,
+    config: q.data ?? {
+      demo: true,
+      payments: { razorpay: false, mode: "off" as const, simulatedCard: true, cod: true },
+      uploads: { enabled: false },
+    },
+  };
 }

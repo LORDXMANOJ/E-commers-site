@@ -26,3 +26,13 @@ export const apiLimiter = rateLimit({
   skip: () => isTest,
   message,
 });
+
+/** Payment endpoints (start, retry, verify): enough for real retries, too few for signature guessing. */
+export const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skip: () => isTest,
+  message,
+});

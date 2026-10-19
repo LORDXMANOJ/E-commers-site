@@ -1,6 +1,7 @@
 // End-to-end journey through the real UI, API and database.
-//   guest adds to bag → registers (bag merges) → browses & filters → checks out → sees the order
-//   → admin confirms & ships it → customer sees the new status.
+//   guest filters by category/price/sort → picks a size → adds to bag → registers (bag merges) → checks out
+//   → sees the order with its size → admin confirms & ships it → customer sees the new status
+//   → admin creates a product with sizes, edits its stock, and the storefront reflects it.
 //
 // Needs the API (seeded) and the web app running:  BASE=http://localhost:5173 npm run e2e
 import { chromium } from "playwright";
@@ -11,7 +12,8 @@ const HEADED = process.env.HEADED === "1";
 const email = `e2e-${Date.now()}@example.com`;
 const step = (msg) => console.log(`✓ ${msg}`);
 
-const browser = await chromium.launch({ headless: !HEADED });
+// PW_CHANNEL=chrome uses the installed Google Chrome instead of Playwright's downloaded browser.
+const browser = await chromium.launch({ headless: !HEADED, channel: process.env.PW_CHANNEL || undefined });
 const errors = [];
 const watch = (page, who) => {
   page.on("pageerror", (e) => errors.push(`[${who}] ${e.message}`));
@@ -32,9 +34,9 @@ try {
   await page.goto(`${BASE}/shop`);
   await page.getByRole("heading", { name: "All products" }).waitFor();
   const filters = page.getByRole("complementary", { name: "Filters" });
-  await filters.getByRole("button", { name: /^Outerwear/ }).click();
-  await page.waitForURL(/category=outerwear/);
-  await page.getByRole("heading", { name: "Outerwear", level: 1 }).waitFor();
+  await filters.getByRole("button", { name: /^Anarkalis & Gowns/ }).click();
+  await page.waitForURL(/category=anarkalis/);
+  await page.getByRole("heading", { name: "Anarkalis & Gowns", level: 1 }).waitFor();
   await filters.getByRole("button", { name: "₹5,000 – ₹10,000" }).click();
   await page.waitForURL(/min=5000&max=10000|max=10000.*min=5000/);
   await Promise.all([
@@ -50,20 +52,28 @@ try {
   assert.ok(names.length > 0, "filtered results should not be empty");
   assert.ok(prices.every((p) => p >= 5000 && p <= 10000), `prices within range: ${prices}`);
   assert.deepEqual(prices, [...prices].sort((a, b) => a - b), "sorted by price ascending");
-  step(`filtered to Outerwear ₹5,000–₹10,000, price ↑: ${names.join(", ")}`);
+  step(`filtered to Anarkalis & Gowns ₹5,000–₹10,000, price ↑: ${names.join(", ")}`);
 
   // 2. Open a product and add it to the guest bag.
   await results.locator("article a").first().click();
   await page.waitForURL(/\/product\//);
-  await page.getByRole("button", { name: "Add to bag" }).waitFor();
+  // Garments need a size: the button asks for one, and clicking it without a size shows a prompt.
+  await page.getByRole("button", { name: "Select a size" }).waitFor();
   const productName = (await page.getByRole("heading", { level: 1 }).textContent()).trim();
+  await page.getByRole("button", { name: "Select a size" }).click();
+  await page.getByText("Choose a size to add this to your bag.").waitFor();
+  const sizeOption = page.locator('label:has(input[name="size"]:not([disabled]))').first();
+  const sizeName = (await sizeOption.textContent()).trim();
+  await sizeOption.click();
+  await page.getByRole("button", { name: "Add to bag" }).waitFor();
   await page.getByRole("button", { name: "Increase quantity" }).click();
   await page.getByRole("button", { name: "Add to bag" }).click();
   await page.getByRole("button", { name: "Open bag, 2 items" }).waitFor();
-  step(`guest added 2 × ${productName} to the bag (localStorage)`);
+  step(`guest picked size ${sizeName} and added 2 × ${productName} to the bag (localStorage)`);
 
   // 3. Checkout requires login → register → guest bag merges into the server cart.
   await page.getByRole("button", { name: "Open bag, 2 items" }).click();
+  await page.getByRole("dialog").getByText(`Size ${sizeName}`).waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "Check out" }).click();
   await page.waitForURL(/\/login\?next=%2Fcheckout/);
   await page.getByRole("link", { name: "Create an account" }).click();
@@ -99,8 +109,9 @@ try {
   await page.getByRole("link", { name: "Track this order" }).click();
   await page.getByRole("heading", { name: orderNumber }).waitFor();
   await page.locator("main").getByText("Pending", { exact: true }).first().waitFor();
+  await page.locator("main").getByText(`Size ${sizeName}`).first().waitFor();
   const orderUrl = page.url();
-  step("customer sees the order as Pending");
+  step(`customer sees the order as Pending, with size ${sizeName}`);
 
   /* ───────────────── Admin ───────────────── */
   const adminCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -137,6 +148,49 @@ try {
   const res = await page.request.get(`${BASE}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } });
   assert.equal(res.status(), 403);
   step("customer is blocked from /admin (UI) and gets 403 from /api/admin/stats");
+
+  /* ───────────────── Admin manages a product with sizes ───────────────── */
+  const newName = `Demo Chanderi Kurta ${Date.now() % 100000}`;
+  await admin.goto(`${BASE}/admin/products/new`);
+  await admin.getByLabel("Name").fill(newName);
+  await admin.getByLabel("Description").fill("A test kurta in chanderi cotton, created by the end-to-end test.");
+  await admin.getByLabel("Price (₹)", { exact: true }).fill("2190");
+  await admin.getByLabel("Category").selectOption({ label: "Kurtas & Kurtis" });
+  // Default sizes are S, M and L; set M to 4, L to 0 and add XL with 2.
+  await admin.getByLabel("Stock for size S").fill("3");
+  await admin.getByLabel("Stock for size M").fill("4");
+  await admin.getByLabel("Stock for size L").fill("0");
+  await admin.getByText("XL", { exact: true }).click();
+  await admin.getByLabel("Stock for size XL").fill("2");
+  await admin.getByLabel("Image URLs").fill("https://images.pexels.com/photos/35504999/pexels-photo-35504999.jpeg?auto=compress&cs=tinysrgb&w=1200");
+  await admin.getByRole("button", { name: "Create product" }).click();
+  await admin.waitForURL(/\/admin\/products$/);
+  step(`admin created "${newName}" with sizes S 3, M 4, L 0, XL 2`);
+
+  const slug = newName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const shop = await customer.newPage();
+  watch(shop, "storefront");
+  await shop.goto(`${BASE}/product/${slug}`);
+  await shop.getByRole("heading", { name: newName }).waitFor();
+  assert.equal(await shop.locator('input[name="size"]').count(), 4, "four sizes shown");
+  assert.equal(await shop.locator('input[name="size"][disabled]').count(), 1, "size L is sold out");
+  step("storefront shows the four sizes, with L disabled as sold out");
+
+  // Edit: restock L, drop XL.
+  const pub = await shop.request.get(`${BASE}/api/products/${slug}`);
+  const productId = (await pub.json()).data.id;
+  await admin.goto(`${BASE}/admin/products/${productId}`);
+  await admin.getByLabel("Stock for size L").fill("5");
+  await admin.getByText("XL", { exact: true }).click();
+  await admin.getByRole("button", { name: "Save changes" }).click();
+  await admin.waitForURL(/\/admin\/products$/);
+  await shop.reload();
+  await shop.getByRole("heading", { name: newName }).waitFor();
+  assert.equal(await shop.locator('input[name="size"]').count(), 3, "XL removed");
+  assert.equal(await shop.locator('input[name="size"][disabled]').count(), 0, "L back in stock");
+  const after = await (await shop.request.get(`${BASE}/api/products/${slug}`)).json();
+  assert.equal(after.data.stock, 12, "total stock is S 3 + M 4 + L 5");
+  step("admin restocked L and removed XL; storefront and API show 3 sizes and 12 in stock");
 
   // 7. Forgot / reset password through the UI (development shows the link since there is no email provider).
   const guest = await browser.newContext({ viewport: { width: 390, height: 844 } });

@@ -36,7 +36,7 @@ function SearchForm({ onDone, autoFocus, className }: { onDone?: () => void; aut
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search coats, dresses, bags…"
+        placeholder="Search sarees, kurtas, lehengas…"
         aria-label="Search products"
         autoFocus={autoFocus}
         className={cn(controlClass, "h-10 rounded-full pl-9 text-[16px]")}

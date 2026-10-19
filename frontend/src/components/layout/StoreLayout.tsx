@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Link, Outlet, ScrollRestoration } from "react-router";
 import { Header, Wordmark } from "./Header";
 import { CartDrawer } from "./CartDrawer";
+import { DemoNotice } from "./DemoNotice";
 import { Spinner } from "../ui/Feedback";
 
 function Footer() {
@@ -10,7 +11,7 @@ function Footer() {
       <div className="container-page grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div className="max-w-xs">
           <Wordmark className="text-[2.2rem]" />
-          <p className="mt-4 text-sm text-muted">Clothes and accessories in natural fibres, made in small runs and priced honestly.</p>
+          <p className="mt-4 text-sm text-muted">Sarees, kurtas and occasion wear for women. A demonstration store with fictional products and orders.</p>
         </div>
         <div>
           <h2 className="text-sm font-semibold">Shop</h2>
@@ -39,7 +40,7 @@ function Footer() {
       </div>
       <div className="border-t border-line">
         <p className="container-page py-5 text-xs text-muted">
-          © {new Date().getFullYear()} Aurelle. A portfolio project: card payments are simulated and no real charges are made.
+          © {new Date().getFullYear()} Aurelle demo store. Fictional products, customers and orders. Payments run in test mode only and no real money is charged.
         </p>
       </div>
     </footer>
@@ -49,6 +50,7 @@ function Footer() {
 export function StoreLayout() {
   return (
     <div className="flex min-h-dvh flex-col">
+      <DemoNotice />
       <Header />
       <main id="main" className="flex-1">
         <Suspense fallback={<Spinner />}>

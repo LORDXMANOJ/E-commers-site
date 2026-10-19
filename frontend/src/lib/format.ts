@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentMethod, PaymentStatus, ShippingMethod } from "./types";
+import type { OrderStatus, PaymentMethod, PaymentStatus, ShippingMethod, Size } from "./types";
 
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2, minimumFractionDigits: 0 });
 const inrCompact = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", notation: "compact", maximumFractionDigits: 1 });
@@ -40,13 +40,18 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   COD: "Cash on delivery",
   CARD_SIMULATED: "Card (simulated)",
+  RAZORPAY: "Razorpay (test mode)",
 };
 
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   UNPAID: "Unpaid",
   PAID: "Paid",
+  REFUND_PENDING: "Refund in progress",
   REFUNDED: "Refunded",
 };
+
+export const SIZES: Size[] = ["XS", "S", "M", "L", "XL", "XXL", "FREE_SIZE"];
+export const sizeLabel = (s: Size) => (s === "FREE_SIZE" ? "Free Size" : s);
 
 export const SHIPPING_LABEL: Record<ShippingMethod, string> = { STANDARD: "Standard", EXPRESS: "Express" };
 
