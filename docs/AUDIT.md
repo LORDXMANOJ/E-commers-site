@@ -7,7 +7,7 @@ Date: 19 October 2026. Scope: preparing Aurelle as a women's-wear e-commerce **d
 | Layer | Technology |
 | --- | --- |
 | Website | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query, React Router |
-| API | Node 20+, Express 5, TypeScript, Zod validation, JWT auth with ADMIN and CUSTOMER roles |
+| API | Node 22.12+, Express 5, TypeScript, Zod validation, JWT auth with ADMIN and CUSTOMER roles |
 | Database | PostgreSQL through Prisma 6.19 |
 | Payments | Razorpay Standard Checkout (test mode), cash on delivery, and a simulated card used only when Razorpay is not configured |
 | Images | Remote URLs: Pexels sample photos, plus Cloudinary for admin uploads (signed, direct from the browser) |

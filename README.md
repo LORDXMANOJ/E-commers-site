@@ -80,7 +80,7 @@ styles, and reduced-motion support.
 | Layer | Tools |
 | --- | --- |
 | Frontend | React 19, TypeScript 5.9, Vite, Tailwind CSS v4, React Router, TanStack Query, Axios, React Hook Form, Zod, lucide-react, sonner |
-| Backend | Node 20+, Express 5, TypeScript 5.9, Zod, jsonwebtoken, bcryptjs, helmet, cors, express-rate-limit |
+| Backend | Node 22.12+, Express 5, TypeScript 5.9, Zod, jsonwebtoken, bcryptjs, helmet, cors, express-rate-limit |
 | Database | PostgreSQL, Prisma 6.19.3 (`prisma-client-js`) |
 | Tests | Vitest and Supertest against a real PostgreSQL test database; Playwright end-to-end journey |
 | Local DB | `embedded-postgres`: a real PostgreSQL server started from npm, with no Docker or system install |
@@ -189,7 +189,7 @@ All routes are under `/api`. **Full reference: [docs/API.md](docs/API.md).**
 
 ## Run it locally
 
-Requirements: **Node.js 20+** and npm. No PostgreSQL or Docker install is needed.
+Requirements: **Node.js 22.12+** and npm. No PostgreSQL or Docker install is needed.
 
 ```bash
 # 1. Install

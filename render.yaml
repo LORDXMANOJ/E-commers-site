@@ -15,7 +15,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
       - key: DATABASE_URL
         sync: false # Supabase session pooler or Neon string
       - key: JWT_SECRET
