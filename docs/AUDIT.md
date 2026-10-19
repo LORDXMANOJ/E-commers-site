@@ -54,6 +54,7 @@ The architecture in the README was accurate. Nothing was migrated to another fra
 | The checkout summary behind the Razorpay window showed an empty bag (only ₹99 shipping). | The bag is emptied only after the payment window closes. |
 | The Razorpay phone prefill was ignored. | It is now sent as `+91XXXXXXXXXX`. |
 | The admin orders list showed raw status text such as `Refund_pending`. | It now uses readable labels. |
+| On Supabase, every table was readable by the public `anon` role through the auto-generated Data API, including `User` password hashes. | Migration `lock_down_public_tables` enables row-level security on all tables and revokes `anon` and `authenticated` access. The app connects as the table owner and is unaffected. Verified on the Supabase project. |
 | Test-mode instructions mentioned UPI test IDs, but UPI is not enabled on this Razorpay test account. | They now describe netbanking (demo bank page) and Razorpay's official test card. |
 
 ## 4. Security review
