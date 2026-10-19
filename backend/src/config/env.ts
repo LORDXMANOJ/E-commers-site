@@ -14,7 +14,10 @@ const csv = z
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
-  CLIENT_URL: csv.pipe(z.array(z.url()).min(1, "CLIENT_URL must list at least one origin")),
+  // Browsers send origins without a trailing slash, so "https://site.app/" is normalised to "https://site.app".
+  CLIENT_URL: csv
+    .transform((list) => list.map((u) => u.replace(/\/+$/, "")))
+    .pipe(z.array(z.url()).min(1, "CLIENT_URL must list at least one origin")),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("7d"),
